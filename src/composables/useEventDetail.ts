@@ -6,6 +6,7 @@ import * as fabric from "fabric";
 import { swal, showSuccess, showError } from "../lib/swal";
 import { useFavorites } from "./useFavorites";
 import { useRealtime } from "./useRealtime";
+import { sanitizeHtml } from "../lib/sanitize";
 export interface AssessmentPopupQueue {
   type: string;
   label?: string;
@@ -479,15 +480,7 @@ export function useEventDetail() {
     ];
     return `${d.date()} ${m[d.month()]} ${d.year() + 543}`;
   };
-  const sanitizeHtml = (html: string) =>
-    html
-      ? html
-          .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "")
-          .replace(/on\w+="[^"]*"/gi, "")
-          .replace(/on\w+='[^']*'/gi, "")
-          .replace(/javascript:/gi, "")
-          .replace(/\n/g, "<br>")
-      : "";
+  // sanitizeHtml is now provided by ../lib/sanitize (DOMPurify-backed).
   const sanitizedRules = computed(() =>
     sanitizeHtml(event.value?.rules_regulations || ""),
   );

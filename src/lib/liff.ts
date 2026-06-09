@@ -2,6 +2,17 @@ import liff from "@line/liff";
 import { authStore } from "../store/auth";
 const LIFF_ID = (import.meta as any).env.VITE_LIFF_ID || "";
 const API_URL = (import.meta as any).env.VITE_API_URL || "/api";
+
+/**
+ * Minimal runtime guard for the restored session object. A corrupt/forged
+ * `vitalcare_user` (e.g. tampered localStorage) must not seed an authenticated
+ * state — we require at least a plausible `id`.
+ */
+const isValidStoredUser = (value: unknown): value is { id: number | string } => {
+  if (!value || typeof value !== "object") return false;
+  const id = (value as any).id;
+  return (typeof id === "number" && Number.isFinite(id)) || (typeof id === "string" && id.length > 0);
+};
 // ─── Session Validator ────────────────────────────────────────────────────────────────────
 /**
  * เช็คผู้ใช้ที่ล็อกอินอยู่ว่ายังมีอยู่ใน Server หรือไม่ (สำหรับใช้โปรส ผู้ใช้ email)
@@ -49,35 +60,49 @@ export const forceLogout = () => {
  * Initialize LIFF framework
  */
 export const initLiff = async () => {
+  // 1. โหลดจาก LocalStorage ก่อนเสมอ (fast path) — ทำก่อน LIFF init เพื่อให้
+  //    ผู้ใช้ email/Google และเบราว์เซอร์ที่ไม่มี LIFF ยังคง Login ค้างไว้ได้
+  const savedUser = localStorage.getItem('vitalcare_user');
+  let hadSavedUser = false;
+  if (savedUser) {
+    try {
+      const parsed = JSON.parse(savedUser);
+      if (isValidStoredUser(parsed)) {
+        authStore.setUser(parsed);
+        authStore.loading = false;
+        hadSavedUser = true;
+        // 2. Background validate: เช็คกับ Server แบบสงบเงียบหลังจาก UI เรนเดอร์แล้ว
+        validateSessionWithServer().catch(() => {});
+      } else {
+        // Corrupt/forged session — drop it and continue unauthenticated.
+        localStorage.removeItem("vitalcare_user");
+      }
+    } catch (e) {
+      localStorage.removeItem("vitalcare_user");
+    }
+  }
+  // ไม่มี LIFF ก็จบได้เลย (session ถูก restore แล้วถ้ามี)
   if (!LIFF_ID) {
     authStore.loading = false;
     return;
   }
   try {
     await liff.init({ liffId: LIFF_ID });
-    // 1. โหลดจาก LocalStorage ก่อน (fast path — สปีดเข้าหน้า)
-    const savedUser = localStorage.getItem('vitalcare_user');
-    if (savedUser) {
-      try {
-        const parsed = JSON.parse(savedUser);
-        authStore.setUser(parsed);
-        authStore.loading = false;
-        // 2. Background validate: เช็คกับ Server แบบสงบเชียบหลังจาก UI ได้เร็นด์แล้ว
-        validateSessionWithServer().catch(() => {});
-        return;
-      } catch (e) {}
-    }
     // 3. ถ้าไม่มีข้อมูลใน Local แต่ Login ผ่าน LINE → Auto Login (Silent)
-    if (liff.isLoggedIn()) {
+    if (!hadSavedUser && liff.isLoggedIn()) {
       try {
         const userData = await backendLoginWithCaptcha('', false, true);
         if (userData) {
           localStorage.setItem('vitalcare_user', JSON.stringify(userData));
         }
       } catch (err: any) {
+        // Silent background auto-login failed (e.g. user not provisioned yet).
+        // Don't surface a toast — the user didn't initiate this. Log for debug.
+        console.warn('[liff] silent auto-login skipped:', err?.message || err);
       }
     }
   } catch (error) {
+    // liff.init ล้มเหลว (เช่นเปิดในเบราว์เซอร์ปกติ) — session ที่ restore ไว้ยังคงอยู่
   } finally {
     authStore.loading = false;
   }

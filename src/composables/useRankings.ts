@@ -1,7 +1,10 @@
 import { ref, onMounted, onUnmounted, computed, nextTick, watch } from "vue";
 import { useRouter, useRoute } from "vue-router";
 import { authStore } from "../store/auth";
+import { uiStore } from "../store/ui";
 import { useRealtime } from "./useRealtime";
+import { abortableJson, isAbortError } from "../lib/http";
+import { safeImageUrl } from "../lib/safeUrl";
 export function useRankings() {
     const PAGE_SIZE = 10;
     const activityPageSize = 10;
@@ -13,6 +16,21 @@ export function useRankings() {
     const showSidebar = ref(false);
     const activeTab = ref<"individual" | "team">("individual");
     const loading = ref(true);
+    const error = ref(false);
+    // AbortControllers so rapid tab/activity switches cancel stale in-flight
+    // requests instead of letting late responses overwrite fresh data.
+    let rankingsController: AbortController | null = null;
+    let userRanksController: AbortController | null = null;
+    const startRankingsRequest = () => {
+        rankingsController?.abort();
+        rankingsController = new AbortController();
+        return rankingsController.signal;
+    };
+    const startUserRanksRequest = () => {
+        userRanksController?.abort();
+        userRanksController = new AbortController();
+        return userRanksController.signal;
+    };
     // ==========================================
     // Activities States
     // ==========================================
@@ -77,14 +95,8 @@ export function useRankings() {
     const currentList = computed(() =>
         activeTab.value === "individual" ? individualRankings.value : teamRankings.value
     );
-    const tableRows = computed(() => {
-        const list = currentList.value;
-        const rows = [...list];
-        while (rows.length < PAGE_SIZE) {
-            rows.push(null as any);
-        }
-        return rows;
-    });
+    // Real rows only — CSS reserves min-height so the table doesn't jump.
+    const tableRows = computed(() => currentList.value);
     const hasMore = computed(() =>
         activeTab.value === "individual" ? indHasMore.value : teamHasMore.value
     );
@@ -99,6 +111,9 @@ export function useRankings() {
     const selectedTeam = ref<any>(null);
     const teamMembers = ref<any[]>([]);
     const loadingMembers = ref(false);
+    // Individual submission detail modal
+    const showSubmissionModal = ref(false);
+    const selectedUser = ref<any>(null);
     const userIndividualRank = ref<number | null>(null);
     const userTeamRank = ref<number | null>(null);
     const userActivityScore = ref(0);
@@ -135,7 +150,7 @@ export function useRankings() {
             : item.total_points || item.total_dist || item.total_unit_value || 0;
     };
     const getImage = (item: any) =>
-        activeTab.value === "individual" ? item.picture_url : item.image;
+        safeImageUrl(activeTab.value === "individual" ? item.picture_url : item.image);
     const isCurrentUser = (item: any) => {
         if (!authStore.user) return false;
         return activeTab.value === "individual"
@@ -147,26 +162,32 @@ export function useRankings() {
     // ==========================================
     const fetchActivities = async () => {
         try {
-            const res = await fetch("/api/activities?all=true");
-            if (res.ok) allActivities.value = await res.json();
+            allActivities.value = await abortableJson("/api/activities?all=true");
         } catch (err) {
+            if (!isAbortError(err)) {
+                uiStore.toast(
+                    "error",
+                    "โหลดรายการกิจกรรมไม่สำเร็จ",
+                    "ไม่สามารถดึงรายการกิจกรรมได้ในขณะนี้",
+                    { actionLabel: "ลองใหม่", onAction: () => fetchActivities() },
+                );
+            }
         }
     };
-    const fetchPage = async (type: "individual" | "team", page: number) => {
-        try {
-            const eventId = selectedActivityId.value;
-            let url = `/api/stats/rankings/${type}?page=${page}&limit=${PAGE_SIZE}`;
-            if (eventId) url += `&activity_id=${eventId}`;
-            if (rankingUnitLong.value)
-                url += `&unit=${encodeURIComponent(rankingUnitLong.value)}`;
-            const res = await fetch(url);
-            if (!res.ok) throw new Error("Rankings fetch failed");
-            return await res.json();
-        } catch (err) {
-            return [];
-        }
+    const fetchPage = async (
+        type: "individual" | "team",
+        page: number,
+        signal?: AbortSignal,
+    ) => {
+        const eventId = selectedActivityId.value;
+        let url = `/api/stats/rankings/${type}?page=${page}&limit=${PAGE_SIZE}`;
+        if (eventId) url += `&activity_id=${eventId}`;
+        if (rankingUnitLong.value)
+            url += `&unit=${encodeURIComponent(rankingUnitLong.value)}`;
+        return await abortableJson<any[]>(url, { signal });
     };
     const fetchRankings = async (silent = false) => {
+        const signal = startRankingsRequest();
         if (!silent) loading.value = true;
         indPage.value = 1;
         teamPage.value = 1;
@@ -174,21 +195,34 @@ export function useRankings() {
         teamHasMore.value = true;
         try {
             const [indData, teamData] = await Promise.all([
-                fetchPage("individual", 1),
-                fetchPage("team", 1),
+                fetchPage("individual", 1, signal),
+                fetchPage("team", 1, signal),
             ]);
             individualRankings.value = indData;
             teamRankings.value = teamData;
             if (indData.length < PAGE_SIZE) indHasMore.value = false;
             if (teamData.length < PAGE_SIZE) teamHasMore.value = false;
+            error.value = false;
         } catch (e) {
+            if (isAbortError(e)) return; // superseded by a newer request — ignore
+            error.value = true;
+            if (!silent) {
+                uiStore.toast(
+                    "error",
+                    "โหลดอันดับไม่สำเร็จ",
+                    "ไม่สามารถดึงข้อมูลอันดับได้ในขณะนี้",
+                    { actionLabel: "ลองใหม่", onAction: () => fetchRankings() },
+                );
+            }
         } finally {
-            loading.value = false;
+            // Only the most recent request may clear the loading flag.
+            if (rankingsController?.signal === signal) loading.value = false;
         }
     };
     const fetchUserRanks = async () => {
         const currentUser = authStore.user;
         if (!currentUser || !currentUser.id) return;
+        const signal = startUserRanksRequest();
         rankLoading.value = true;
         try {
             const actId = selectedActivityId.value;
@@ -197,23 +231,24 @@ export function useRankings() {
             if (actId) params.append("activity_id", String(actId));
             if (unit) params.append("unit", unit);
             const qs = params.toString() ? `?${params.toString()}` : "";
-            const resInd = await fetch(`/api/stats/individual/rank/${currentUser.id}${qs}`);
-            if (resInd.ok) {
-                const { rank, score } = await resInd.json();
-                userIndividualRank.value = rank;
-                userActivityScore.value = score;
-            }
+            const indData = await abortableJson<{ rank: number; score: number }>(
+                `/api/stats/individual/rank/${currentUser.id}${qs}`,
+                { signal },
+            );
+            userIndividualRank.value = indData.rank;
+            userActivityScore.value = indData.score;
             if (currentUser.team_id) {
-                const resTeam = await fetch(`/api/stats/team/rank/${currentUser.team_id}${qs}`);
-                if (resTeam.ok) {
-                    const { rank, score } = await resTeam.json();
-                    userTeamRank.value = rank;
-                    userTeamActivityScore.value = score;
-                }
+                const teamData = await abortableJson<{ rank: number; score: number }>(
+                    `/api/stats/team/rank/${currentUser.team_id}${qs}`,
+                    { signal },
+                );
+                userTeamRank.value = teamData.rank;
+                userTeamActivityScore.value = teamData.score;
             }
         } catch (err) {
+            // Secondary data — fail quietly (abort or transient error).
         } finally {
-            rankLoading.value = false;
+            if (userRanksController?.signal === signal) rankLoading.value = false;
         }
     };
     // ==========================================
@@ -268,20 +303,35 @@ export function useRankings() {
     const changePage = async (page: number) => {
         if (page < 1) return;
         if (page > 1 && !hasMore.value) return;
+        const signal = startRankingsRequest();
+        const tab = activeTab.value;
         loading.value = true;
-        if (activeTab.value === "individual") indPage.value = page;
+        if (tab === "individual") indPage.value = page;
         else teamPage.value = page;
-        const data = await fetchPage(activeTab.value, page);
-        if (activeTab.value === "individual") {
-            individualRankings.value = data;
-            indHasMore.value = data.length === PAGE_SIZE;
-        } else {
-            teamRankings.value = data;
-            teamHasMore.value = data.length === PAGE_SIZE;
+        try {
+            const data = await fetchPage(tab, page, signal);
+            if (tab === "individual") {
+                individualRankings.value = data;
+                indHasMore.value = data.length === PAGE_SIZE;
+            } else {
+                teamRankings.value = data;
+                teamHasMore.value = data.length === PAGE_SIZE;
+            }
+            error.value = false;
+            updateUrlQuery(true); // 🌟 Sync to URL
+            window.scrollTo({ top: 0, behavior: "smooth" });
+        } catch (e) {
+            if (isAbortError(e)) return;
+            error.value = true;
+            uiStore.toast(
+                "error",
+                "โหลดอันดับไม่สำเร็จ",
+                "ไม่สามารถเปลี่ยนหน้าได้ในขณะนี้",
+                { actionLabel: "ลองใหม่", onAction: () => changePage(page) },
+            );
+        } finally {
+            if (rankingsController?.signal === signal) loading.value = false;
         }
-        loading.value = false;
-        updateUrlQuery(true); // 🌟 Sync to URL
-        window.scrollTo({ top: 0, behavior: "smooth" });
     };
     const switchTab = (tab: "individual" | "team") => {
         if (activeTab.value === tab) return;
@@ -296,11 +346,14 @@ export function useRankings() {
         loadingMembers.value = true;
         teamMembers.value = [];
         try {
-            const res = await fetch(`/api/teams/${team.id}/users`);
-            if (!res.ok) throw new Error("Team members fetch failed");
-            const members = await res.json();
+            const members = await abortableJson<any[]>(`/api/teams/${team.id}/users`);
             teamMembers.value = members || [];
         } catch (e) {
+            uiStore.toast(
+                "error",
+                "โหลดสมาชิกทีมไม่สำเร็จ",
+                "ไม่สามารถดึงรายชื่อสมาชิกได้ในขณะนี้",
+            );
         } finally {
             loadingMembers.value = false;
         }
@@ -309,8 +362,17 @@ export function useRankings() {
         showTeamModal.value = false;
         selectedTeam.value = null;
     };
+    const openSubmissionModal = (user: any) => {
+        selectedUser.value = user;
+        showSubmissionModal.value = true;
+    };
+    const closeSubmissionModal = () => {
+        showSubmissionModal.value = false;
+        selectedUser.value = null;
+    };
     const handleItemClick = (item: any) => {
         if (activeTab.value === "team") openTeamModal(item);
+        else openSubmissionModal(item);
     };
     const scrollToMyRank = async () => {
         if (!authStore.user || rankLoading.value) return;
@@ -325,10 +387,11 @@ export function useRankings() {
             await changePage(targetPage);
         }
         await nextTick();
-        setTimeout(() => {
+        // Wait one frame so the freshly-rendered row is laid out before scrolling.
+        requestAnimationFrame(() => {
             const el = document.querySelector("[data-my-rank='true']");
             if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
-        }, 10);
+        });
     };
     // ==========================================
     // Lifecycle Hooks
@@ -352,26 +415,29 @@ export function useRankings() {
         await fetchRankings();
         await fetchUserRanks();
     });
+    // Coalesce bursts of realtime submission events into a single refetch so a
+    // flurry of updates doesn't trigger one network round-trip per event.
+    let realtimeTimer: ReturnType<typeof setTimeout> | null = null;
+    const debouncedRefresh = () => {
+        if (realtimeTimer) clearTimeout(realtimeTimer);
+        realtimeTimer = setTimeout(() => {
+            fetchRankings(true);
+            fetchUserRanks();
+        }, 600);
+    };
     useRealtime({
-        onSubmissionCreated: () => {
-            fetchRankings(true);
-            fetchUserRanks();
-        },
-        onSubmissionUpdated: () => {
-            fetchRankings(true);
-            fetchUserRanks();
-        },
-        onSubmissionDeleted: () => {
-            fetchRankings(true);
-            fetchUserRanks();
-        },
+        onSubmissionCreated: debouncedRefresh,
+        onSubmissionUpdated: debouncedRefresh,
+        onSubmissionDeleted: debouncedRefresh,
         onActivityUpdated: () => {
             fetchActivities();
-            fetchRankings(true);
-        }
+            debouncedRefresh();
+        },
     });
     onUnmounted(() => {
-        // Add logic if needed
+        if (realtimeTimer) clearTimeout(realtimeTimer);
+        rankingsController?.abort();
+        userRanksController?.abort();
     });
     // ==========================================
     // Export Data for UI Template
@@ -387,10 +453,13 @@ export function useRankings() {
         selectedActivityId,
         activeTab,
         loading,
+        error,
         showTeamModal,
         selectedTeam,
         teamMembers,
         loadingMembers,
+        showSubmissionModal,
+        selectedUser,
         // Computed Properties
         filteredActivities,
         visibleActivities,
@@ -421,6 +490,8 @@ export function useRankings() {
         loadMoreActivities,
         openTeamModal,
         closeTeamModal,
+        openSubmissionModal,
+        closeSubmissionModal,
         handleItemClick,
         scrollToMyRank
     };

@@ -158,7 +158,29 @@
                             <p>{{ langStore.t('loading_data') }}</p>
                         </div>
                         <div
-                            v-else-if="tableRows.length === 0 || !tableRows[0]"
+                            v-else-if="error"
+                            class="empty-state"
+                        >
+                            <div class="empty-icon">
+                                <svg
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="1.5"
+                                    width="48"
+                                    height="48"
+                                >
+                                    <circle cx="12" cy="12" r="9" />
+                                    <path d="M12 8v4m0 4h.01" />
+                                </svg>
+                            </div>
+                            <p>{{ langStore.t('error_connect') }}</p>
+                            <button class="retry-btn" @click="changePage(currentPage)">
+                                {{ langStore.t('retry') }}
+                            </button>
+                        </div>
+                        <div
+                            v-else-if="tableRows.length === 0"
                             class="empty-state"
                         >
                             <div class="empty-icon">
@@ -177,20 +199,18 @@
                             </div>
                             <p>{{ langStore.t('rank_no_data') }}</p>
                         </div>
-                        <div v-else class="list-body">
-                            <template
+                        <TransitionGroup v-else tag="div" name="list-row" class="list-body">
+                            <div
                                 v-for="(item, idx) in tableRows"
-                                :key="idx"
+                                :key="item.id ?? idx"
+                                class="list-row"
+                                :data-my-rank="isCurrentUser(item) ? 'true' : null"
+                                :class="{
+                                    'is-me': isCurrentUser(item),
+                                    'top-3': item.rank <= 3,
+                                }"
+                                @click="handleItemClick(item)"
                             >
-                                <div
-                                    v-if="item"
-                                    class="list-row"
-                                    :class="{
-                                        'is-me': isCurrentUser(item),
-                                        'top-3': item.rank <= 3,
-                                    }"
-                                    @click="handleItemClick(item)"
-                                >
                                     <div class="col-rank">
                                         <span
                                             v-if="item.rank === 1"
@@ -222,6 +242,8 @@
                                             <img
                                                 v-if="getImage(item)"
                                                 :src="getImage(item)"
+                                                loading="lazy"
+                                                decoding="async"
                                             />
                                             <span v-else>{{
                                                 getInitial(item)
@@ -256,10 +278,9 @@
                                         <span class="score-unit">{{ isPoints ? langStore.t('points') : rankingUnitShort }}</span>
                                     </div>
                                 </div>
-                            </template>
-                        </div>
+                        </TransitionGroup>
                         <div
-                            v-if="!loading && tableRows[0]"
+                            v-if="!loading && !error && tableRows.length > 0"
                             class="flex justify-center pt-6 pb-6 border-t border-slate-100"
                         >
                             <AppPagination
@@ -274,6 +295,13 @@
                 </main>
             </div>
         </div>
+        <SubmissionModal
+            :open="showSubmissionModal"
+            :user="selectedUser"
+            :activity-id="selectedActivityId"
+            :unit-short="rankingUnitShort"
+            @close="closeSubmissionModal"
+        />
     </div>
 </template>
 
@@ -283,6 +311,7 @@ import { useRankings } from "../composables/useRankings";
 import { ChevronRight, ChevronDown, Search } from "lucide-vue-next";
 import AppPagination from "../components/common/AppPagination.vue";
 import UserTitle from "../components/UserTitle.vue";
+import SubmissionModal from "../components/SubmissionModal.vue";
 import { langStore } from "../store/lang";
 
 const {
@@ -294,6 +323,7 @@ const {
     visibleActivities,
     activeTab,
     loading,
+    error,
     rankingUnitLong,
     rankingUnitShort,
     isPoints,
@@ -316,15 +346,26 @@ const {
     handleItemClick,
     scrollToMyRank,
     loadMoreActivities,
+    showSubmissionModal,
+    selectedUser,
+    closeSubmissionModal,
 } = useRankings();
 
 const isDropdownOpen = ref(false);
 
-const handleDropdownScroll = (e) => {
-    const target = e.target;
-    if (target.scrollTop + target.clientHeight >= target.scrollHeight - 20) {
-        loadMoreActivities();
-    }
+// rAF-throttled so the scroll handler runs at most once per frame instead of
+// firing dozens of times during a single flick.
+let scrollTicking = false;
+const handleDropdownScroll = (e: Event) => {
+    if (scrollTicking) return;
+    const target = e.target as HTMLElement;
+    scrollTicking = true;
+    requestAnimationFrame(() => {
+        scrollTicking = false;
+        if (target.scrollTop + target.clientHeight >= target.scrollHeight - 20) {
+            loadMoreActivities();
+        }
+    });
 };
 
 const currentActivityTitle = computed(() => {
@@ -756,6 +797,7 @@ const handleSelectActivity = (id) => {
     padding: 16px 20px;
     border-bottom: 1px solid var(--border);
     transition: 0.2s;
+    cursor: pointer;
 }
 
 .list-row:hover {
@@ -867,6 +909,48 @@ const handleSelectActivity = (id) => {
     padding: 60px 20px;
     text-align: center;
     color: var(--text-muted);
+}
+
+.retry-btn {
+    margin-top: 14px;
+    padding: 8px 20px;
+    border: none;
+    border-radius: 99px;
+    background: var(--primary);
+    color: #fff;
+    font-weight: 600;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: filter 0.15s ease;
+}
+.retry-btn:hover {
+    filter: brightness(0.95);
+}
+
+/* Smooth enter/leave + reorder for ranking rows */
+.list-body {
+    position: relative;
+}
+.list-row-move,
+.list-row-enter-active,
+.list-row-leave-active {
+    transition: transform 0.28s ease, opacity 0.28s ease;
+}
+.list-row-enter-from,
+.list-row-leave-to {
+    opacity: 0;
+    transform: translateY(6px);
+}
+.list-row-leave-active {
+    position: absolute;
+    width: 100%;
+}
+@media (prefers-reduced-motion: reduce) {
+    .list-row-move,
+    .list-row-enter-active,
+    .list-row-leave-active {
+        transition: none;
+    }
 }
 
 .spinner {

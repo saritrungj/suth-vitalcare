@@ -152,7 +152,13 @@ router.beforeEach(async (to, from, next) => {
   if (userAfterLoad && isLoggingIn) {
     const savedRedirect = sessionStorage.getItem("redirect_after_login");
     sessionStorage.removeItem("redirect_after_login");
-    const destination = savedRedirect || "/";
+    // Only allow internal, root-relative paths (block protocol-relative `//evil`
+    // and absolute external URLs) to prevent open-redirect.
+    const isSafeRedirect =
+      typeof savedRedirect === "string" &&
+      savedRedirect.startsWith("/") &&
+      !savedRedirect.startsWith("//");
+    const destination = isSafeRedirect ? (savedRedirect as string) : "/";
     return next(destination);
   }
   if (userAfterLoad && !isRegistering && !isLoggingIn) {

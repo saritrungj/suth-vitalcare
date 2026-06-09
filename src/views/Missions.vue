@@ -633,7 +633,10 @@ const getActivityStatus = (act: any) => {
           </div>
 
           <h2 class="celebration-title">{{ langStore.locale === 'th' ? 'ยินดีด้วย! ส่งภารกิจสำเร็จ 🎉' : 'Congratulations! Mission submitted 🎉' }}</h2>
-          <p class="celebration-desc" v-html="langStore.locale === 'th' ? `คุณได้ทำภารกิจ <strong>&quot;${celebrationTaskTitle}&quot;</strong> เสร็จสมบูรณ์แล้ว` : `You have successfully completed the mission <strong>&quot;${celebrationTaskTitle}&quot;</strong>.`"></p>
+          <p class="celebration-desc">
+            <template v-if="langStore.locale === 'th'">คุณได้ทำภารกิจ <strong>&quot;{{ celebrationTaskTitle }}&quot;</strong> เสร็จสมบูรณ์แล้ว</template>
+            <template v-else>You have successfully completed the mission <strong>&quot;{{ celebrationTaskTitle }}&quot;</strong>.</template>
+          </p>
           
           <div class="points-gain-badge">
             <Star class="fill-current" :size="16" />
