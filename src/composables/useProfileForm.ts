@@ -229,7 +229,9 @@ export function useProfileForm(user: any, tanitaRef: any) {
         // Optionally show success message
       } else {
         const errorData = await res.json().catch(() => ({}));
-        showError(errorData.error || "ไม่สามารถบันทึกข้อมูลได้ กรุณาลองใหม่อีกครั้ง");
+        showError(
+          errorData.error || "ไม่สามารถบันทึกข้อมูลได้ กรุณาลองใหม่อีกครั้ง",
+        );
       }
     } catch (err: any) {
       console.error("[saveEdit] Error:", err);

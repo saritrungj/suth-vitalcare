@@ -17,38 +17,50 @@
       <table>
         <thead>
           <tr>
-            <th v-for="day in ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']" :key="day">{{ day }}</th>
+            <th
+              v-for="day in ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']"
+              :key="day"
+            >
+              {{ day }}
+            </th>
           </tr>
         </thead>
         <tbody>
           <tr v-for="(week, wIdx) in weeks" :key="wIdx">
-            <td 
-              v-for="(day, dIdx) in week" 
+            <td
+              v-for="(day, dIdx) in week"
               :key="dIdx"
               @click="day && $emit('selectDay', day)"
               :class="[
                 !day ? 'is-empty' : '',
                 day?.isToday ? 'is-today' : '',
-                selectedDate?.getTime() === day?.date.getTime() ? 'is-selected' : '',
-                day && !day.isCurrentMonth ? 'not-current-month' : ''
+                selectedDate?.getTime() === day?.date.getTime()
+                  ? 'is-selected'
+                  : '',
+                day && !day.isCurrentMonth ? 'not-current-month' : '',
               ]"
             >
               <template v-if="day">
-                <input 
-                  type="checkbox" 
-                  :checked="selectedDate?.getTime() === day.date.getTime()" 
+                <input
+                  type="checkbox"
+                  :checked="selectedDate?.getTime() === day.date.getTime()"
                   readonly
-                >
+                />
                 <div class="day-content">
                   <span class="day-num">{{ day.day }}</span>
-                  <div class="day-bars" v-if="day.missions && day.missions.length">
-                    <div 
-                      v-for="(m, i) in day.missions.slice(0, maxBars)" 
+                  <div
+                    class="day-bars"
+                    v-if="day.missions && day.missions.length"
+                  >
+                    <div
+                      v-for="(m, i) in day.missions.slice(0, maxBars)"
                       :key="i"
                       class="mission-bar"
                       :class="m.status"
                     >
-                      <span class="mission-text">{{ m.task?.note || m.task?.type || 'ภารกิจ' }}</span>
+                      <span class="mission-text">{{
+                        m.task?.note || m.task?.type || "ภารกิจ"
+                      }}</span>
                     </div>
                     <div v-if="day.missions.length > maxBars" class="more-bars">
                       +{{ day.missions.length - maxBars }} เพิ่มเติม
@@ -69,33 +81,37 @@
 </template>
 
 <script setup>
-import { computed, ref, onMounted, onUnmounted } from 'vue'
-import { ChevronLeft, ChevronRight } from 'lucide-vue-next'
+import { computed, ref, onMounted, onUnmounted } from "vue";
+import { ChevronLeft, ChevronRight } from "lucide-vue-next";
 
 const props = defineProps({
   days: { type: Array, required: true },
-  monthLabel: { type: String, default: '' },
-  yearLabel: { type: String, default: '' },
-  selectedDate: { type: Date, default: null }
-})
+  monthLabel: { type: String, default: "" },
+  yearLabel: { type: String, default: "" },
+  selectedDate: { type: Date, default: null },
+});
 
-defineEmits(['prevMonth', 'nextMonth', 'selectDay'])
+defineEmits(["prevMonth", "nextMonth", "selectDay"]);
 
-const windowWidth = ref(typeof window !== 'undefined' ? window.innerWidth : 1024)
-const updateWidth = () => { windowWidth.value = window.innerWidth }
-onMounted(() => window.addEventListener('resize', updateWidth))
-onUnmounted(() => window.removeEventListener('resize', updateWidth))
+const windowWidth = ref(
+  typeof window !== "undefined" ? window.innerWidth : 1024,
+);
+const updateWidth = () => {
+  windowWidth.value = window.innerWidth;
+};
+onMounted(() => window.addEventListener("resize", updateWidth));
+onUnmounted(() => window.removeEventListener("resize", updateWidth));
 
 // 2 bars on mobile (≤640px), 3 on tablet/desktop
-const maxBars = computed(() => windowWidth.value <= 640 ? 2 : 3)
+const maxBars = computed(() => (windowWidth.value <= 640 ? 2 : 3));
 
 const weeks = computed(() => {
-  const result = []
+  const result = [];
   for (let i = 0; i < props.days.length; i += 7) {
-    result.push(props.days.slice(i, i + 7))
+    result.push(props.days.slice(i, i + 7));
   }
-  return result
-})
+  return result;
+});
 </script>
 
 <style scoped>
@@ -106,7 +122,7 @@ const weeks = computed(() => {
   justify-content: center;
   align-items: flex-start;
   width: 100%;
-  font-family: 'Inter', 'Sarabun', sans-serif;
+  font-family: var(--font-sans);
 }
 
 .calendar {
@@ -159,7 +175,10 @@ const weeks = computed(() => {
   justify-content: center;
   cursor: pointer;
   color: #374151;
-  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  transition:
+    background 0.15s,
+    color 0.15s,
+    border-color 0.15s;
   padding: 0;
   flex-shrink: 0;
 }
@@ -191,7 +210,9 @@ th {
   padding: 0;
 }
 
-th:last-child { border-right: none; }
+th:last-child {
+  border-right: none;
+}
 
 /* Desktop: tall cells to comfortably show 3 bars + +N indicator */
 td {
@@ -206,18 +227,28 @@ td {
   transition: background 0.15s;
 }
 
-td:last-child { border-right: none; }
-tbody tr:last-child td { border-bottom: none; }
+td:last-child {
+  border-right: none;
+}
+tbody tr:last-child td {
+  border-bottom: none;
+}
 
-td:hover { background: #f9fafb; }
+td:hover {
+  background: #f9fafb;
+}
 
 td.is-empty {
   background: #fafafa;
   cursor: default;
 }
-td.is-empty:hover { background: #fafafa; }
+td.is-empty:hover {
+  background: #fafafa;
+}
 
-td.is-today { background: #f0f9ff; }
+td.is-today {
+  background: #f0f9ff;
+}
 
 td.is-selected {
   background: #eff6ff;
@@ -225,14 +256,20 @@ td.is-selected {
   z-index: 2;
 }
 
-td.not-current-month { background: #fafafa; }
-td.not-current-month .day-num { color: #c4c9d4; }
+td.not-current-month {
+  background: #fafafa;
+}
+td.not-current-month .day-num {
+  color: #c4c9d4;
+}
 
 /* ── Day content ── */
 td .day-content {
   position: absolute;
-  top: 0; left: 0;
-  width: 100%; height: 100%;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -242,7 +279,9 @@ td .day-content {
   gap: 2px;
 }
 
-td input[type="checkbox"] { display: none; }
+td input[type="checkbox"] {
+  display: none;
+}
 
 .day-num {
   font-size: 12px;
@@ -296,20 +335,40 @@ td.is-today .day-num {
 }
 
 /* ── Vivid status colors ── */
-.mission-bar.approved  { background: #bbf7d0; }
-.mission-bar.approved  .mission-text { color: #14532d; }
+.mission-bar.approved {
+  background: #bbf7d0;
+}
+.mission-bar.approved .mission-text {
+  color: #14532d;
+}
 
-.mission-bar.active    { background: #bfdbfe; }
-.mission-bar.active    .mission-text { color: #1e3a8a; }
+.mission-bar.active {
+  background: #bfdbfe;
+}
+.mission-bar.active .mission-text {
+  color: #1e3a8a;
+}
 
-.mission-bar.pending   { background: #fde68a; }
-.mission-bar.pending   .mission-text { color: #78350f; }
+.mission-bar.pending {
+  background: #fde68a;
+}
+.mission-bar.pending .mission-text {
+  color: #78350f;
+}
 
-.mission-bar.missed    { background: #fecaca; }
-.mission-bar.missed    .mission-text { color: #7f1d1d; }
+.mission-bar.missed {
+  background: #fecaca;
+}
+.mission-bar.missed .mission-text {
+  color: #7f1d1d;
+}
 
-.mission-bar.upcoming  { background: #e0e7ff; }
-.mission-bar.upcoming  .mission-text { color: #312e81; }
+.mission-bar.upcoming {
+  background: #e0e7ff;
+}
+.mission-bar.upcoming .mission-text {
+  color: #312e81;
+}
 
 /* ── +N more label ── */
 .more-bars {
@@ -322,24 +381,63 @@ td.is-today .day-num {
 
 /* ── Mobile: 2 bars max, shorter cells ── */
 @media (max-width: 640px) {
-  .calendar-wrapper { padding: 0; }
-  .calendar { border-radius: 10px; box-shadow: 0 2px 12px rgba(0,0,0,0.06); }
-  .month { padding: 10px 12px; }
-  .month-title { font-size: 0.88rem; }
-  .nav-arrow { width: 28px; height: 28px; min-width: 28px; border-radius: 6px; }
-  th { font-size: 8px; height: 26px; letter-spacing: 0; }
+  .calendar-wrapper {
+    padding: 0;
+  }
+  .calendar {
+    border-radius: 10px;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+  }
+  .month {
+    padding: 10px 12px;
+  }
+  .month-title {
+    font-size: 0.88rem;
+  }
+  .nav-arrow {
+    width: 28px;
+    height: 28px;
+    min-width: 28px;
+    border-radius: 6px;
+  }
+  th {
+    font-size: 8px;
+    height: 26px;
+    letter-spacing: 0;
+  }
 
   /* Mobile cells: 90px gives breathing room for 2 bars + more indicator */
-  td { height: 90px; }
-  td .day-content { padding: 5px 3px 3px 4px; gap: 2px; }
-  .day-num { font-size: 10px; width: 18px; height: 18px; margin-bottom: 2px; }
-  .mission-bar { height: 15px; padding: 0 3px; border-radius: 3px; }
-  .mission-text { font-size: 8.5px; }
-  .more-bars { font-size: 8px; padding: 0 3px; }
+  td {
+    height: 90px;
+  }
+  td .day-content {
+    padding: 5px 3px 3px 4px;
+    gap: 2px;
+  }
+  .day-num {
+    font-size: 10px;
+    width: 18px;
+    height: 18px;
+    margin-bottom: 2px;
+  }
+  .mission-bar {
+    height: 15px;
+    padding: 0 3px;
+    border-radius: 3px;
+  }
+  .mission-text {
+    font-size: 8.5px;
+  }
+  .more-bars {
+    font-size: 8px;
+    padding: 0 3px;
+  }
 }
 
 /* ── Tablet: moderate height ── */
 @media (min-width: 641px) and (max-width: 1023px) {
-  td { height: 110px; }
+  td {
+    height: 110px;
+  }
 }
 </style>

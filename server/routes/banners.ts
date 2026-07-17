@@ -196,15 +196,23 @@ async function updateHandler(req: any, res: any) {
           oldImageUrl.startsWith("/uploads/")
         ) {
           try {
-            const relativeOldPath = oldImageUrl.substring('/uploads/'.length);
-            const filePath = path.join(process.cwd(), "public", "uploads", ...relativeOldPath.split('/').filter(Boolean));
+            const relativeOldPath = oldImageUrl.substring("/uploads/".length);
+            const filePath = path.join(
+              process.cwd(),
+              "public",
+              "uploads",
+              ...relativeOldPath.split("/").filter(Boolean),
+            );
             console.log(`[banner update] Deleting old file: ${filePath}`);
             if (fs.existsSync(filePath)) {
               await fs.promises.unlink(filePath);
               console.log(`[banner update] Deleted old file successfully.`);
             }
           } catch (err: any) {
-            console.warn(`[banner update] Failed to delete old file: ${oldImageUrl}`, err.message);
+            console.warn(
+              `[banner update] Failed to delete old file: ${oldImageUrl}`,
+              err.message,
+            );
           }
         }
       }
@@ -248,10 +256,15 @@ router.delete("/:id", async (req, res) => {
     );
     if (rows.length > 0) {
       const imageUrl = rows[0].image_url;
-      if (imageUrl && imageUrl.startsWith('/uploads/')) {
+      if (imageUrl && imageUrl.startsWith("/uploads/")) {
         try {
-          const relativeOldPath = imageUrl.substring('/uploads/'.length);
-          const filePath = path.join(process.cwd(), "public", "uploads", ...relativeOldPath.split('/').filter(Boolean));
+          const relativeOldPath = imageUrl.substring("/uploads/".length);
+          const filePath = path.join(
+            process.cwd(),
+            "public",
+            "uploads",
+            ...relativeOldPath.split("/").filter(Boolean),
+          );
           console.log(`[banner delete] Deleting physical file: ${filePath}`);
           if (fs.existsSync(filePath)) {
             await fs.promises.unlink(filePath);

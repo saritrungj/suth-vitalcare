@@ -8,7 +8,12 @@ function walk(dir, exts, files = []) {
   for (const entry of entries) {
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) {
-      if (["node_modules", "dist", "playwright-report", ".git"].includes(entry.name)) continue;
+      if (
+        ["node_modules", "dist", "playwright-report", ".git"].includes(
+          entry.name,
+        )
+      )
+        continue;
       walk(full, exts, files);
     } else if (exts.includes(path.extname(entry.name))) {
       files.push(full);
@@ -36,7 +41,7 @@ function removeConsoleCalls(content) {
         else if (ch === "\\") esc = true;
         else if (ch === inStr) inStr = null;
       } else {
-        if (ch === "\"" || ch === "'" || ch === "`") inStr = ch;
+        if (ch === '"' || ch === "'" || ch === "`") inStr = ch;
         else if (ch === "(") depth++;
         else if (ch === ")") {
           depth--;
@@ -63,16 +68,40 @@ function removeConsoleCalls(content) {
 function sanitizeServerErrors(content) {
   let s = content;
 
-  s = s.replace(/status\(500\)\.json\(\{\s*error\s*:\s*(err|error)\.message\s*\}\)/g, 'status(500).json({ error: "Internal Server Error" })');
-  s = s.replace(/status\(500\)\.json\(\{\s*error\s*:\s*(err|error)\.message\s*\|\|\s*[^}]+\}\)/g, 'status(500).json({ error: "Internal Server Error" })');
-  s = s.replace(/status\(500\)\.send\((err|error)\.message\)/g, 'status(500).send("Internal Server Error")');
+  s = s.replace(
+    /status\(500\)\.json\(\{\s*error\s*:\s*(err|error)\.message\s*\}\)/g,
+    'status(500).json({ error: "Internal Server Error" })',
+  );
+  s = s.replace(
+    /status\(500\)\.json\(\{\s*error\s*:\s*(err|error)\.message\s*\|\|\s*[^}]+\}\)/g,
+    'status(500).json({ error: "Internal Server Error" })',
+  );
+  s = s.replace(
+    /status\(500\)\.send\((err|error)\.message\)/g,
+    'status(500).send("Internal Server Error")',
+  );
 
-  s = s.replace(/status\(400\)\.json\(\{\s*error\s*:\s*(err|error)\.message\s*\}\)/g, 'status(400).json({ error: "Bad Request" })');
-  s = s.replace(/status\(400\)\.json\(\{\s*error\s*:\s*(err|error)\.message\s*\|\|\s*[^}]+\}\)/g, 'status(400).json({ error: "Bad Request" })');
+  s = s.replace(
+    /status\(400\)\.json\(\{\s*error\s*:\s*(err|error)\.message\s*\}\)/g,
+    'status(400).json({ error: "Bad Request" })',
+  );
+  s = s.replace(
+    /status\(400\)\.json\(\{\s*error\s*:\s*(err|error)\.message\s*\|\|\s*[^}]+\}\)/g,
+    'status(400).json({ error: "Bad Request" })',
+  );
 
-  s = s.replace(/\{\s*error:\s*"Internal Server Error"\s*,\s*message:\s*error\.message\s*,?\s*code:\s*error\.code\s*\}/g, '{ error: "Internal Server Error" }');
-  s = s.replace(/\{\s*error:\s*"Internal Server Error: Rank calculation failed"\s*,\s*message:\s*error\.message\s*\}/g, '{ error: "Internal Server Error" }');
-  s = s.replace(/\{\s*error:\s*"Internal Server Error: Team rank calculation failed"\s*,\s*message:\s*error\.message\s*,\s*sqlState:\s*error\.sqlState\s*\}/g, '{ error: "Internal Server Error" }');
+  s = s.replace(
+    /\{\s*error:\s*"Internal Server Error"\s*,\s*message:\s*error\.message\s*,?\s*code:\s*error\.code\s*\}/g,
+    '{ error: "Internal Server Error" }',
+  );
+  s = s.replace(
+    /\{\s*error:\s*"Internal Server Error: Rank calculation failed"\s*,\s*message:\s*error\.message\s*\}/g,
+    '{ error: "Internal Server Error" }',
+  );
+  s = s.replace(
+    /\{\s*error:\s*"Internal Server Error: Team rank calculation failed"\s*,\s*message:\s*error\.message\s*,\s*sqlState:\s*error\.sqlState\s*\}/g,
+    '{ error: "Internal Server Error" }',
+  );
 
   return s;
 }

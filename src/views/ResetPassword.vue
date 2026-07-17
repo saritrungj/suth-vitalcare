@@ -1,13 +1,20 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from "vue";
 import { useRouter, useRoute } from "vue-router";
-import { User, Lock, Loader2, CheckCircle2, ArrowLeft, HelpCircle } from "lucide-vue-next";
-import Swal from 'sweetalert2';
-import MainFooter from '../components/MainFooter.vue';
-import { langStore } from '../store/lang';
+import {
+  User,
+  Lock,
+  Loader2,
+  CheckCircle2,
+  ArrowLeft,
+  HelpCircle,
+} from "lucide-vue-next";
+import Swal from "sweetalert2";
+import MainFooter from "../components/MainFooter.vue";
+import { langStore } from "../store/lang";
 const router = useRouter();
 const route = useRoute();
-const API_URL = import.meta.env.VITE_API_URL || '/api';
+const API_URL = import.meta.env.VITE_API_URL || "/api";
 const identifier = ref(""); // maps to email or phone
 const token = ref("");
 const newPassword = ref("");
@@ -31,32 +38,36 @@ const handleForgotPassword = async () => {
     const res = await fetch(`${API_URL}/users/forgot-password`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: identifier.value }) // API likely takes email still
+      body: JSON.stringify({ email: identifier.value }), // API likely takes email still
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || "ไม่พบข้อมูลผู้ใช้ในระบบ");
     Swal.fire({
-      icon: 'success',
-      title: langStore.locale === 'th' ? 'ส่งลิงก์สำเร็จ' : 'Link Sent Successfully',
-      text: langStore.locale === 'th' ? 'ระบบได้ส่งรหัสสำหรับรีเซ็ตรหัสผ่านไปให้คุณแล้ว' : 'We have sent you a password reset code.',
-      confirmButtonColor: '#f05a23',
-      timer: 3000
+      icon: "success",
+      title:
+        langStore.locale === "th" ? "ส่งลิงก์สำเร็จ" : "Link Sent Successfully",
+      text:
+        langStore.locale === "th"
+          ? "ระบบได้ส่งรหัสสำหรับรีเซ็ตรหัสผ่านไปให้คุณแล้ว"
+          : "We have sent you a password reset code.",
+      confirmButtonColor: "#f05a23",
+      timer: 3000,
     });
     // For demo purposes, if the API returns a debug token we automatically jump to the next step
     if (data.debug_token) {
-        token.value = data.debug_token;
-        step.value = "reset";
+      token.value = data.debug_token;
+      step.value = "reset";
     } else {
-        // Since we don't have a real OTP flow in the mock, we assume success means check email
-        // Or if testing locally, developer can just enter the new URL
-        step.value = "success";
+      // Since we don't have a real OTP flow in the mock, we assume success means check email
+      // Or if testing locally, developer can just enter the new URL
+      step.value = "success";
     }
   } catch (error: any) {
     Swal.fire({
-      icon: 'error',
-      title: langStore.t('error_title'),
+      icon: "error",
+      title: langStore.t("error_title"),
       text: error.message,
-      confirmButtonColor: '#f05a23'
+      confirmButtonColor: "#f05a23",
     });
   } finally {
     isSubmitting.value = false;
@@ -64,11 +75,25 @@ const handleForgotPassword = async () => {
 };
 const handleResetPassword = async () => {
   if (newPassword.value !== confirmPassword.value) {
-    Swal.fire({ icon: 'error', title: langStore.locale === 'th' ? 'รหัสผ่านไม่ตรงกัน' : 'Passwords do not match', confirmButtonColor: '#f05a23' });
+    Swal.fire({
+      icon: "error",
+      title:
+        langStore.locale === "th"
+          ? "รหัสผ่านไม่ตรงกัน"
+          : "Passwords do not match",
+      confirmButtonColor: "#f05a23",
+    });
     return;
   }
   if (newPassword.value.length < 6) {
-    Swal.fire({ icon: 'error', title: langStore.locale === 'th' ? 'รหัสผ่านต้องมีความยาวอย่างน้อย 6 ตัวอักษร' : 'Password must be at least 6 characters long', confirmButtonColor: '#f05a23' });
+    Swal.fire({
+      icon: "error",
+      title:
+        langStore.locale === "th"
+          ? "รหัสผ่านต้องมีความยาวอย่างน้อย 6 ตัวอักษร"
+          : "Password must be at least 6 characters long",
+      confirmButtonColor: "#f05a23",
+    });
     return;
   }
   isSubmitting.value = true;
@@ -76,16 +101,27 @@ const handleResetPassword = async () => {
     const res = await fetch(`${API_URL}/users/reset-password`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ 
+      body: JSON.stringify({
         token: token.value,
-        newPassword: newPassword.value
-      })
+        newPassword: newPassword.value,
+      }),
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error || (langStore.locale === 'th' ? "เซสชั่นหมดอายุ กรุณาทำรายการใหม่" : "Session expired. Please try again."));
+    if (!res.ok)
+      throw new Error(
+        data.error ||
+          (langStore.locale === "th"
+            ? "เซสชั่นหมดอายุ กรุณาทำรายการใหม่"
+            : "Session expired. Please try again."),
+      );
     step.value = "success";
   } catch (error: any) {
-    Swal.fire({ icon: 'error', title: langStore.t('error_title'), text: error.message, confirmButtonColor: '#f05a23' });
+    Swal.fire({
+      icon: "error",
+      title: langStore.t("error_title"),
+      text: error.message,
+      confirmButtonColor: "#f05a23",
+    });
   } finally {
     isSubmitting.value = false;
   }
@@ -95,13 +131,18 @@ const handleResetPassword = async () => {
   <div class="reset-page">
     <!-- Mobile Header -->
     <header class="top-nav mobile-only">
-      <button @click="step === 'reset' ? step = 'forgot' : router.push('/login')" class="icon-btn">
+      <button
+        @click="step === 'reset' ? (step = 'forgot') : router.push('/login')"
+        class="icon-btn"
+      >
         <ArrowLeft class="text-primary" />
       </button>
       <h1 class="nav-title">
-        <span v-if="step === 'forgot'">{{ langStore.locale === 'th' ? 'กู้คืนบัญชีผู้ใช้' : 'Recover Account' }}</span>
-        <span v-if="step === 'reset'">{{ langStore.t('reset_password') }}</span>
-        <span v-if="step === 'success'">{{ langStore.t('finish') }}</span>
+        <span v-if="step === 'forgot'">{{
+          langStore.locale === "th" ? "กู้คืนบัญชีผู้ใช้" : "Recover Account"
+        }}</span>
+        <span v-if="step === 'reset'">{{ langStore.t("reset_password") }}</span>
+        <span v-if="step === 'success'">{{ langStore.t("finish") }}</span>
       </h1>
       <button class="icon-btn">
         <HelpCircle class="text-primary" />
@@ -111,17 +152,32 @@ const handleResetPassword = async () => {
     <header class="desktop-header">
       <div class="header-inner">
         <div class="brand">
-          <button @click="step === 'reset' ? step = 'forgot' : router.push('/login')" class="desktop-back-btn group hover:bg-slate-50 transition-colors p-2 rounded-full cursor-pointer flex items-center justify-center">
-            <ArrowLeft class="text-primary group-hover:scale-110 transition-transform" />
+          <button
+            @click="
+              step === 'reset' ? (step = 'forgot') : router.push('/login')
+            "
+            class="desktop-back-btn group hover:bg-slate-50 transition-colors p-2 rounded-full cursor-pointer flex items-center justify-center"
+          >
+            <ArrowLeft
+              class="text-primary group-hover:scale-110 transition-transform"
+            />
           </button>
           <img src="/logo.png" alt="Logo" class="mini-logo" />
           <span class="header-title">
-            <span v-if="step === 'forgot'">{{ langStore.locale === 'th' ? 'กู้คืนบัญชีผู้ใช้' : 'Recover Account' }}</span>
-            <span v-if="step === 'reset'">{{ langStore.t('reset_password') }}</span>
-            <span v-if="step === 'success'">{{ langStore.t('finish') }}</span>
+            <span v-if="step === 'forgot'">{{
+              langStore.locale === "th"
+                ? "กู้คืนบัญชีผู้ใช้"
+                : "Recover Account"
+            }}</span>
+            <span v-if="step === 'reset'">{{
+              langStore.t("reset_password")
+            }}</span>
+            <span v-if="step === 'success'">{{ langStore.t("finish") }}</span>
           </span>
         </div>
-        <a href="#" class="help-link">{{ langStore.locale === 'th' ? 'ต้องการความช่วยเหลือ?' : 'Need Help?' }}</a>
+        <a href="#" class="help-link">{{
+          langStore.locale === "th" ? "ต้องการความช่วยเหลือ?" : "Need Help?"
+        }}</a>
       </div>
     </header>
     <div class="content-wrapper">
@@ -130,51 +186,71 @@ const handleResetPassword = async () => {
         <div v-if="step === 'forgot'" class="form-container">
           <div class="input-line-group">
             <User class="input-icon" :size="20" />
-            <input 
-              type="text" 
-              v-model="identifier" 
-              :placeholder="langStore.t('email_or_phone')" 
-              class="input-line" 
+            <input
+              type="text"
+              v-model="identifier"
+              :placeholder="langStore.t('email_or_phone')"
+              class="input-line"
             />
           </div>
-          <button 
-            class="btn-next" 
+          <button
+            class="btn-next"
             :class="{ 'btn-active': isForgotValid }"
             :disabled="!isForgotValid || isSubmitting"
             @click="handleForgotPassword"
           >
-            <Loader2 v-if="isSubmitting" class="animate-spin spin-icon" :size="20" />
-            <span v-else>{{ langStore.t('next_step') }}</span>
+            <Loader2
+              v-if="isSubmitting"
+              class="animate-spin spin-icon"
+              :size="20"
+            />
+            <span v-else>{{ langStore.t("next_step") }}</span>
           </button>
-          <a href="#" class="change-phone-link">{{ langStore.locale === 'th' ? 'เปลี่ยนหมายเลขโทรศัพท์' : 'Change Phone Number' }}</a>
+          <a href="#" class="change-phone-link">{{
+            langStore.locale === "th"
+              ? "เปลี่ยนหมายเลขโทรศัพท์"
+              : "Change Phone Number"
+          }}</a>
         </div>
         <!-- Step 2: Reset -->
         <div v-if="step === 'reset'" class="form-container">
           <div class="input-line-group">
             <Lock class="input-icon" :size="20" />
-            <input 
-              type="password" 
-              v-model="newPassword" 
-              :placeholder="langStore.t('new_password')" 
-              class="input-line" 
+            <input
+              type="password"
+              v-model="newPassword"
+              :placeholder="langStore.t('new_password')"
+              class="input-line"
             />
           </div>
           <div class="input-line-group mt-4">
             <Lock class="input-icon" :size="20" />
-            <input 
-              type="password" 
-              v-model="confirmPassword" 
-              :placeholder="langStore.locale === 'th' ? 'ยืนยันรหัสผ่านใหม่' : 'Confirm New Password'" 
-              class="input-line" 
+            <input
+              type="password"
+              v-model="confirmPassword"
+              :placeholder="
+                langStore.locale === 'th'
+                  ? 'ยืนยันรหัสผ่านใหม่'
+                  : 'Confirm New Password'
+              "
+              class="input-line"
             />
           </div>
-          <button 
-            class="btn-next btn-active mt-6" 
+          <button
+            class="btn-next btn-active mt-6"
             :disabled="isSubmitting"
             @click="handleResetPassword"
           >
-            <Loader2 v-if="isSubmitting" class="animate-spin spin-icon" :size="20" />
-            <span v-else>{{ langStore.locale === 'th' ? 'ยืนยันเปลี่ยนรหัสผ่าน' : 'Confirm Reset Password' }}</span>
+            <Loader2
+              v-if="isSubmitting"
+              class="animate-spin spin-icon"
+              :size="20"
+            />
+            <span v-else>{{
+              langStore.locale === "th"
+                ? "ยืนยันเปลี่ยนรหัสผ่าน"
+                : "Confirm Reset Password"
+            }}</span>
           </button>
         </div>
         <!-- Step 3: Success -->
@@ -182,10 +258,19 @@ const handleResetPassword = async () => {
           <div class="success-icon-wrap">
             <CheckCircle2 :size="72" />
           </div>
-          <h2 class="success-title">{{ langStore.t('success') }}</h2>
-          <p class="success-desc">{{ langStore.locale === 'th' ? 'กรุณาเข้าสู่ระบบด้วยรหัสผ่านใหม่ของคุณ' : 'Please login with your new password.' }}</p>
-          <button class="btn-next btn-active mt-8" @click="router.push('/login')">
-            {{ langStore.t('login') }}
+          <h2 class="success-title">{{ langStore.t("success") }}</h2>
+          <p class="success-desc">
+            {{
+              langStore.locale === "th"
+                ? "กรุณาเข้าสู่ระบบด้วยรหัสผ่านใหม่ของคุณ"
+                : "Please login with your new password."
+            }}
+          </p>
+          <button
+            class="btn-next btn-active mt-8"
+            @click="router.push('/login')"
+          >
+            {{ langStore.t("login") }}
           </button>
         </div>
       </div>
@@ -199,7 +284,7 @@ const handleResetPassword = async () => {
   min-height: 100svh;
   width: 100vw;
   background-color: #ffffff;
-  font-family: 'Sarabun', sans-serif;
+  font-family: "Sarabun", sans-serif;
   display: flex;
   flex-direction: column;
 }
@@ -309,11 +394,22 @@ const handleResetPassword = async () => {
 .change-phone-link:hover {
   text-decoration: underline;
 }
-.mt-4 { margin-top: 16px; }
-.mt-6 { margin-top: 24px; }
-.mt-8 { margin-top: 32px; }
-.text-center { text-align: center; }
-.py-10 { padding-top: 40px; padding-bottom: 40px; }
+.mt-4 {
+  margin-top: 16px;
+}
+.mt-6 {
+  margin-top: 24px;
+}
+.mt-8 {
+  margin-top: 32px;
+}
+.text-center {
+  text-align: center;
+}
+.py-10 {
+  padding-top: 40px;
+  padding-bottom: 40px;
+}
 .success-icon-wrap {
   color: #22c55e;
   margin-bottom: 20px;
@@ -334,8 +430,12 @@ const handleResetPassword = async () => {
   animation: spin 1s linear infinite;
 }
 @keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 @media (min-width: 768px) {
   .reset-page {
@@ -401,4 +501,4 @@ const handleResetPassword = async () => {
     overflow: hidden;
   }
 }
-</style>
+</style>

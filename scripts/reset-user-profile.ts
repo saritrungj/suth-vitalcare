@@ -5,8 +5,11 @@ async function run() {
   try {
     // 1. Inspect table columns
     const [columns]: any = await pool.query("SHOW COLUMNS FROM users");
-    console.log("Users columns:", columns.map((c: any) => c.Field));
-    
+    console.log(
+      "Users columns:",
+      columns.map((c: any) => c.Field),
+    );
+
     const [users]: any = await pool.query("SELECT * FROM users LIMIT 1");
     console.log("Current user row:", users);
 
@@ -30,14 +33,23 @@ async function run() {
       muscle_mass: "57.8",
       metabolic_age: "24",
       visceral_fat: "5",
-      bmi: "22.4"
+      bmi: "22.4",
     };
 
     // Encrypt fields using the CURRENT active key in the environment
-    const textFields = ["gender", "weight", "fat_pc", "fat_mass", "muscle_mass", "metabolic_age", "visceral_fat", "bmi"];
+    const textFields = [
+      "gender",
+      "weight",
+      "fat_pc",
+      "fat_mass",
+      "muscle_mass",
+      "metabolic_age",
+      "visceral_fat",
+      "bmi",
+    ];
     const encryptedText = encryptFields(p, textFields);
 
-    const recordedAt = new Date().toISOString().slice(0, 19).replace('T', ' ');
+    const recordedAt = new Date().toISOString().slice(0, 19).replace("T", " ");
 
     const query = `
       INSERT INTO tanita (
@@ -52,33 +64,38 @@ async function run() {
       recordedAt,
       "Standard",
       encryptedText.gender,
-      25,           // age
-      178.0,        // height
-      1.0,          // clothes weight
+      25, // age
+      178.0, // height
+      1.0, // clothes weight
       encryptedText.weight,
       encryptedText.fat_pc,
       encryptedText.fat_mass,
-      60.8,         // ffm
+      60.8, // ffm
       encryptedText.muscle_mass,
-      44.5,         // tbw_mass
-      59.5,         // tbw_pc
-      3.2,          // bone_mass
-      6900,         // bmr_kj
-      1650,         // bmr_kcal
+      44.5, // tbw_mass
+      59.5, // tbw_pc
+      3.2, // bone_mass
+      6900, // bmr_kj
+      1650, // bmr_kcal
       encryptedText.metabolic_age,
       encryptedText.visceral_fat,
       encryptedText.bmi,
-      71.2,         // ideal_weight
-      0.0,          // obesity_degree
-      5,            // physique_rating
-      82.0          // waist_cm
+      71.2, // ideal_weight
+      0.0, // obesity_degree
+      5, // physique_rating
+      82.0, // waist_cm
     ];
 
     await pool.query(query, values);
-    console.log("Successfully inserted a normal human health profile for user!");
+    console.log(
+      "Successfully inserted a normal human health profile for user!",
+    );
 
     // Also update the main user record
-    await pool.query("UPDATE users SET main_goal = 'ลดน้ำหนัก', activity_level = 'light' WHERE id = ?", [userId]);
+    await pool.query(
+      "UPDATE users SET main_goal = 'ลดน้ำหนัก', activity_level = 'light' WHERE id = ?",
+      [userId],
+    );
     console.log("Updated users table with normal credentials!");
 
     process.exit(0);

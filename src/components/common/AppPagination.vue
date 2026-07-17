@@ -1,13 +1,13 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, onUnmounted } from 'vue';
-import { ChevronLeft, ChevronRight } from 'lucide-vue-next';
+import { computed, onMounted, ref, onUnmounted } from "vue";
+import { ChevronLeft, ChevronRight } from "lucide-vue-next";
 const props = defineProps<{
   currentPage: number;
   totalPages: number;
   maxVisible?: number;
 }>();
 const emit = defineEmits<{
-  (e: 'change', page: number): void;
+  (e: "change", page: number): void;
 }>();
 const isMobile = ref(false);
 function checkScreen() {
@@ -15,15 +15,15 @@ function checkScreen() {
 }
 onMounted(() => {
   checkScreen();
-  window.addEventListener('resize', checkScreen);
+  window.addEventListener("resize", checkScreen);
 });
 onUnmounted(() => {
-  window.removeEventListener('resize', checkScreen);
+  window.removeEventListener("resize", checkScreen);
 });
 const pagesArray = computed(() => {
   const arr: (number | string)[] = [];
   // Reduce max visible on mobile to prevent overflow
-  const maxVisible = isMobile.value ? 3 : (props.maxVisible || 5);
+  const maxVisible = isMobile.value ? 3 : props.maxVisible || 5;
   const current = props.currentPage;
   const total = props.totalPages;
   if (total <= maxVisible) {
@@ -33,32 +33,35 @@ const pagesArray = computed(() => {
   const sidePages = isMobile.value ? 1 : 2;
   let start = Math.max(1, current - sidePages);
   let end = Math.min(total, start + (maxVisible - 1));
-  if (end - start < (maxVisible - 1)) {
+  if (end - start < maxVisible - 1) {
     start = Math.max(1, end - (maxVisible - 1));
   }
   if (start > 1) {
     arr.push(1);
-    if (start > 2) arr.push('...');
+    if (start > 2) arr.push("...");
   }
   for (let i = start; i <= end; i++) {
     arr.push(i);
   }
   if (end < total) {
-    if (end < total - 1) arr.push('...');
+    if (end < total - 1) arr.push("...");
     arr.push(total);
   }
   return arr;
 });
 const setPage = (p: number) => {
   if (p < 1 || p > props.totalPages) return;
-  emit('change', p);
+  emit("change", p);
 };
 </script>
 <template>
-  <div v-if="totalPages > 1" class="pagination-container animate-in fade-in duration-500">
+  <div
+    v-if="totalPages > 1"
+    class="pagination-container animate-in fade-in duration-500"
+  >
     <!-- Previous Button -->
-    <button 
-      @click="setPage(currentPage - 1)" 
+    <button
+      @click="setPage(currentPage - 1)"
       :disabled="currentPage === 1"
       class="page-btn nav-btn"
     >
@@ -66,23 +69,23 @@ const setPage = (p: number) => {
     </button>
     <!-- Page Numbers -->
     <div class="page-numbers">
-      <button 
-        v-for="(p, i) in pagesArray" 
-        :key="i" 
+      <button
+        v-for="(p, i) in pagesArray"
+        :key="i"
         @click="typeof p === 'number' ? setPage(p) : null"
         :disabled="typeof p === 'string'"
         class="page-btn"
         :class="[
           currentPage === p ? 'active' : 'inactive',
-          typeof p === 'string' ? 'ellipsis' : ''
+          typeof p === 'string' ? 'ellipsis' : '',
         ]"
       >
         {{ p }}
       </button>
     </div>
     <!-- Next Button -->
-    <button 
-      @click="setPage(currentPage + 1)" 
+    <button
+      @click="setPage(currentPage + 1)"
       :disabled="currentPage === totalPages"
       class="page-btn nav-btn"
     >
@@ -110,7 +113,7 @@ const setPage = (p: number) => {
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  border: 1px solid #E2E8F0;
+  border: 1px solid #e2e8f0;
   background: #fff;
   color: #475569;
   font-size: 14px;
@@ -124,17 +127,17 @@ const setPage = (p: number) => {
   transition: all 0.2s;
   cursor: pointer;
   padding: 0;
-  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 }
 .page-btn.active {
-  background: #FF6A00;
-  border-color: #FF6A00;
+  background: #ff6a00;
+  border-color: #ff6a00;
   color: #fff;
   box-shadow: 0 4px 12px rgba(255, 106, 0, 0.2);
 }
 .page-btn.inactive:hover {
-  border-color: #FF6A00;
-  color: #FF6A00;
+  border-color: #ff6a00;
+  color: #ff6a00;
 }
 .page-btn:disabled:not(.ellipsis) {
   opacity: 0.3;
@@ -167,4 +170,4 @@ const setPage = (p: number) => {
     min-width: 18px;
   }
 }
-</style>
+</style>

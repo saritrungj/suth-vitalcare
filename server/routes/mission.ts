@@ -3,6 +3,7 @@ import { pool } from "../mysql.js";
 import { decrypt } from "../lib/crypto.js";
 import { getIO, EVENTS } from "../lib/realtime.js";
 import { logAudit } from "../lib/audit.js";
+import { awardDailyMission } from "../lib/scoring.js";
 
 const router = express.Router();
 
@@ -52,14 +53,18 @@ router.post("/submit", async (req, res) => {
       `SELECT id FROM submissions 
        WHERE user_id = ? AND task_id = ? AND DATE(created_at) = CURDATE() 
        LIMIT 1`,
-      [userId, taskId]
+      [userId, taskId],
     );
 
     if (existingSub.length > 0) {
-      // If a submission already exists for today, we just return that one 
+      // If a submission already exists for today, we just return that one
       // instead of creating a duplicate. (Idempotent response)
       await connection.commit();
-      return res.json({ success: true, submissionId: existingSub[0].id, alreadyExists: true });
+      return res.json({
+        success: true,
+        submissionId: existingSub[0].id,
+        alreadyExists: true,
+      });
     }
 
     const [result]: any = await connection.query(
@@ -76,7 +81,6 @@ router.post("/submit", async (req, res) => {
         device_id || null,
       ],
     );
-
 
     const insertId = result.insertId;
 
@@ -146,9 +150,15 @@ router.post("/submit", async (req, res) => {
 
     await connection.commit();
 
+    // Configurable daily-mission scoring (base + streak bonus, once/day/user).
+    if (userId) {
+      const todayStr = new Date().toLocaleDateString("en-CA"); // YYYY-MM-DD (local)
+      awardDailyMission(Number(userId), todayStr).catch(() => {});
+    }
+
     // Fetch inserted record with event_id
     const [rows]: any = await pool.query(
-      `SELECT s.*, t.event_id as activity_id 
+      `SELECT s.*, t.event_id as activity_id
        FROM submissions s
        JOIN tasks t ON s.task_id = t.id
        WHERE s.id = ?`,
@@ -195,7 +205,14 @@ router.patch("/submission/:id", async (req, res) => {
 
     await connection.query(
       `UPDATE submissions SET value = ?, img_url = ?, text_response = ?, comment = ?, activity_type = ? WHERE id = ?`,
-      [value, imageUrl, textResponse || null, note, activity_type || "exercise", id],
+      [
+        value,
+        imageUrl,
+        textResponse || null,
+        note,
+        activity_type || "exercise",
+        id,
+      ],
     );
 
     // Editing a submission no longer updates points to prevent accidental additions/subtractions on points
@@ -361,7 +378,7 @@ router.get("/all", async (req, res) => {
     res.status(500).json({ error: "Internal Server Error" });
   }
 });
- 
+
 // Admin Route: Bulk update status
 router.patch("/bulk-status", async (req, res) => {
   const adminId = req.headers["x-user-id"];
@@ -378,7 +395,7 @@ router.patch("/bulk-status", async (req, res) => {
     for (const id of ids) {
       const [subRows]: any = await connection.query(
         `SELECT s.*, t.points, t.event_id FROM submissions s LEFT JOIN tasks t ON s.task_id = t.id WHERE s.id = ? FOR UPDATE`,
-        [id]
+        [id],
       );
       if (subRows.length === 0) continue;
       const submission = subRows[0];
@@ -386,7 +403,7 @@ router.patch("/bulk-status", async (req, res) => {
       // Update status
       await connection.query(
         "UPDATE submissions SET status = ?, comment = ?, approved_by = ?, approved_at = NOW() WHERE id = ?",
-        [status, note || "", adminId, id]
+        [status, note || "", adminId, id],
       );
 
       // Points management
@@ -394,26 +411,35 @@ router.patch("/bulk-status", async (req, res) => {
         if (status === "approved" && submission.status !== "approved") {
           await connection.query(
             "UPDATE users SET points = points + ?, total_score = total_score + ? WHERE id = ?",
-            [submission.points, submission.points, submission.user_id]
+            [submission.points, submission.points, submission.user_id],
           );
           if (submission.event_id) {
             const [lbRows]: any = await connection.query(
               "SELECT id FROM event_leaderboards WHERE event_id = ? AND user_id = ?",
-              [submission.event_id, submission.user_id]
+              [submission.event_id, submission.user_id],
             );
             if (lbRows.length > 0) {
-              await connection.query("UPDATE event_leaderboards SET score = score + ? WHERE id = ?", [submission.points, lbRows[0].id]);
+              await connection.query(
+                "UPDATE event_leaderboards SET score = score + ? WHERE id = ?",
+                [submission.points, lbRows[0].id],
+              );
             } else {
-              await connection.query("INSERT INTO event_leaderboards (event_id, user_id, score, rank) VALUES (?, ?, ?, 0)", [submission.event_id, submission.user_id, submission.points]);
+              await connection.query(
+                "INSERT INTO event_leaderboards (event_id, user_id, score, rank) VALUES (?, ?, ?, 0)",
+                [submission.event_id, submission.user_id, submission.points],
+              );
             }
           }
         } else if (status === "rejected" && submission.status === "approved") {
           await connection.query(
             "UPDATE users SET points = GREATEST(0, points - ?), total_score = GREATEST(0, total_score - ?) WHERE id = ?",
-            [submission.points, submission.points, submission.user_id]
+            [submission.points, submission.points, submission.user_id],
           );
           if (submission.event_id) {
-            await connection.query("UPDATE event_leaderboards SET score = GREATEST(0, score - ?) WHERE event_id = ? AND user_id = ?", [submission.points, submission.event_id, submission.user_id]);
+            await connection.query(
+              "UPDATE event_leaderboards SET score = GREATEST(0, score - ?) WHERE event_id = ? AND user_id = ?",
+              [submission.points, submission.event_id, submission.user_id],
+            );
           }
         }
       }
@@ -600,17 +626,19 @@ router.delete("/submission/:id", async (req, res) => {
 
     // Deduct points if it was approved
     if (submission.status === "approved" && submission.points) {
-      console.log(`[Points] Deleting approved submission ${id}. Deducting ${submission.points} from user ${submission.user_id}`);
-      
+      console.log(
+        `[Points] Deleting approved submission ${id}. Deducting ${submission.points} from user ${submission.user_id}`,
+      );
+
       await connection.query(
         "UPDATE users SET points = GREATEST(0, points - ?), total_score = GREATEST(0, total_score - ?) WHERE id = ?",
-        [submission.points, submission.points, submission.user_id]
+        [submission.points, submission.points, submission.user_id],
       );
 
       if (submission.event_id) {
         await connection.query(
           "UPDATE event_leaderboards SET score = GREATEST(0, score - ?) WHERE event_id = ? AND user_id = ?",
-          [submission.points, submission.event_id, submission.user_id]
+          [submission.points, submission.event_id, submission.user_id],
         );
       }
     }
@@ -627,7 +655,7 @@ router.delete("/submission/:id", async (req, res) => {
     });
 
     await connection.commit();
-    
+
     // Trigger Realtime Event
     getIO().emit(EVENTS.SUBMISSION_DELETED, { id });
 

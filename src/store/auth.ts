@@ -1,13 +1,17 @@
 import { reactive } from "vue";
+import { readStoredUser, writeStoredUser } from "./authSession";
+
+const initialUser = readStoredUser();
+
 export const authStore = reactive({
   isDevModeEnabled: false,
   isAdminMode: false,
-  user: null as any,
-  loading: true,
+  user: initialUser as any,
+  loading: !initialUser,
   // Is the user operating in Admin mode right now?
   // Used for conditional UI rendering and routing
   get isAdminRoleActive(): boolean {
-    return this.isAdminMode && this.user?.role === 'admin';
+    return this.isAdminMode && this.user?.role === "admin";
   },
   // Default permissions if not loaded from DB
   permissions: {
@@ -15,11 +19,7 @@ export const authStore = reactive({
     user: { admin: false, missions: true, rewards: true, rankings: true },
   },
   saveUser() {
-    if (this.user) {
-      localStorage.setItem("vitalcare_user", JSON.stringify(this.user));
-    } else {
-      localStorage.removeItem("vitalcare_user");
-    }
+    writeStoredUser(this.user);
   },
   setUser(userData: any) {
     this.user = userData;
@@ -38,4 +38,4 @@ export const authStore = reactive({
   toggleAdminMode() {
     this.isAdminMode = !this.isAdminMode;
   },
-});
+});

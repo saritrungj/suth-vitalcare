@@ -4,7 +4,9 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "concurrently -n \"SERVER,TUNNEL\" -c \"bgBlue,bgGreen\" \"npm run server\" \"npm run tunnel\"",
+    "dev": "cross-env NODE_ENV=development PORT=5001 VITE_API_URL=/api VITE_TURNSTILE_ENABLED=false TURNSTILE_ENABLED=false DISABLE_HMR=true tsx server/index.ts",
+    "dev:turnstile": "cross-env NODE_ENV=development PORT=5001 VITE_API_URL=/api VITE_TURNSTILE_ENABLED=true TURNSTILE_ENABLED=true DISABLE_HMR=true tsx server/index.ts",
+    "dev:tunnel": "concurrently -n \"SERVER,TUNNEL\" -c \"bgBlue,bgGreen\" \"npm run dev:turnstile\" \"npm run tunnel\"",
     "test:speed": "npm run build && concurrently -n \"PROD,TUNNEL\" -c \"bgRed,bgGreen\" \"cross-env NODE_ENV=production tsx server/index.ts --prod\" \"npm run tunnel\"",
     "start": "cross-env NODE_ENV=production tsx server/index.ts",
     "server": "tsx server/index.ts",

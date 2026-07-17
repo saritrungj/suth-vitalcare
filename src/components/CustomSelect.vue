@@ -1,40 +1,43 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted } from "vue";
 const props = defineProps<{
   modelValue: string;
-  options: { value: string, label: string }[] | string[];
+  options: { value: string; label: string }[] | string[];
   label: string;
   required?: boolean;
 }>();
-const emit = defineEmits(['update:modelValue']);
+const emit = defineEmits(["update:modelValue"]);
 const isOpen = ref(false);
 const selectRef = ref<HTMLElement | null>(null);
 const normalizedOptions = computed(() => {
   if (!props.options) return [];
-  return props.options.map(opt => {
-    if (typeof opt === 'string') {
+  return props.options.map((opt) => {
+    if (typeof opt === "string") {
       return { value: opt, label: opt };
     }
     return opt;
   });
 });
 const selectedLabel = computed(() => {
-  const selected = normalizedOptions.value.find(opt => opt.value === props.modelValue);
-  return selected ? selected.label : '';
+  const selected = normalizedOptions.value.find(
+    (opt) => opt.value === props.modelValue,
+  );
+  return selected ? selected.label : "";
 });
-const dropdownDirection = ref<'down' | 'up'>('down');
+const dropdownDirection = ref<"down" | "up">("down");
 const toggleDropdown = () => {
   if (!isOpen.value && selectRef.value) {
     const rect = selectRef.value.getBoundingClientRect();
     const spaceBelow = window.innerHeight - rect.bottom;
     const spaceAbove = rect.top;
     // If space below is less than 260px and there's more space above, flip up
-    dropdownDirection.value = (spaceBelow < 260 && spaceAbove > spaceBelow) ? 'up' : 'down';
+    dropdownDirection.value =
+      spaceBelow < 260 && spaceAbove > spaceBelow ? "up" : "down";
   }
   isOpen.value = !isOpen.value;
 };
 const selectOption = (val: string) => {
-  emit('update:modelValue', val);
+  emit("update:modelValue", val);
   isOpen.value = false;
 };
 const closeDropdown = (e: MouseEvent) => {
@@ -43,31 +46,38 @@ const closeDropdown = (e: MouseEvent) => {
   }
 };
 onMounted(() => {
-  document.addEventListener('click', closeDropdown);
+  document.addEventListener("click", closeDropdown);
 });
 onUnmounted(() => {
-  document.removeEventListener('click', closeDropdown);
+  document.removeEventListener("click", closeDropdown);
 });
 </script>
 <template>
   <div class="premium-input-group custom-select-container" ref="selectRef">
-    <div 
-      class="select-trigger" 
-      :class="{ 'is-open': isOpen, 'selected': modelValue }" 
+    <div
+      class="select-trigger"
+      :class="{ 'is-open': isOpen, selected: modelValue }"
       @click="toggleDropdown"
       tabindex="0"
     >
       <span class="trigger-text">{{ selectedLabel }}</span>
     </div>
     <label>{{ label }} <span v-if="required">*</span></label>
-    <div class="select-caret pointer-events-none" :class="{ 'is-open': isOpen }"></div>
+    <div
+      class="select-caret pointer-events-none"
+      :class="{ 'is-open': isOpen }"
+    ></div>
     <transition name="slide-dropdown">
-      <div v-if="isOpen" class="options-menu" :class="{ 'is-up': dropdownDirection === 'up' }">
-        <div 
-          v-for="opt in normalizedOptions" 
+      <div
+        v-if="isOpen"
+        class="options-menu"
+        :class="{ 'is-up': dropdownDirection === 'up' }"
+      >
+        <div
+          v-for="opt in normalizedOptions"
           :key="opt.value"
           class="option-item"
-          :class="{ 'active': modelValue === opt.value }"
+          :class="{ active: modelValue === opt.value }"
           @click="selectOption(opt.value)"
         >
           {{ opt.label }}
@@ -96,7 +106,8 @@ onUnmounted(() => {
   cursor: pointer;
   outline: none;
 }
-.select-trigger:focus, .select-trigger.is-open {
+.select-trigger:focus,
+.select-trigger.is-open {
   border-color: var(--primary-color);
   background: #ffffff;
 }
@@ -150,7 +161,9 @@ label {
   background: white;
   border: 1px solid var(--border-color);
   border-radius: 12px;
-  box-shadow: 0 10px 25px rgba(0,0,0,0.1), 0 20px 40px rgba(0,0,0,0.05);
+  box-shadow:
+    0 10px 25px rgba(0, 0, 0, 0.1),
+    0 20px 40px rgba(0, 0, 0, 0.05);
   max-height: 250px;
   overflow-y: auto;
   z-index: 999;
@@ -195,7 +208,9 @@ label {
 /* Animation */
 .slide-dropdown-enter-active,
 .slide-dropdown-leave-active {
-  transition: opacity 0.2s ease, transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  transition:
+    opacity 0.2s ease,
+    transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   transform-origin: top center;
 }
 .slide-dropdown-enter-from,
@@ -210,4 +225,4 @@ label {
 .slide-dropdown-leave-to.options-menu.is-up {
   transform: scaleY(0.95) translateY(10px);
 }
-</style>
+</style>

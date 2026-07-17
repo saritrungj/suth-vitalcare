@@ -36,9 +36,8 @@ import certificateRouter from "./routes/certificate.js";
 import healthRouter from "./routes/health.js";
 import logsRouter from "./routes/logs.js";
 import exportRouter from "./routes/export.js";
+import notificationsRouter from "./routes/notifications.js";
 import registrationRouter from "./routes/registration.js";
-import titlesRouter from "./routes/titles.js";
-import { decrypt } from "./lib/crypto.js";
 import { initRealtime } from "./lib/realtime.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -50,7 +49,8 @@ const uploadDir = path.join(__dirname, "../public/uploads");
 const tempDir = path.join(uploadDir, "temp");
 const uploadLogDir = path.join(process.cwd(), "logs", "upload");
 if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
-if (!fs.existsSync(uploadLogDir)) fs.mkdirSync(uploadLogDir, { recursive: true });
+if (!fs.existsSync(uploadLogDir))
+  fs.mkdirSync(uploadLogDir, { recursive: true });
 // Ensure sub-folders exist
 ["activity", "profile", "banners", "submissions"].forEach((sub) =>
   fs.mkdirSync(path.join(uploadDir, sub), { recursive: true }),
@@ -75,7 +75,10 @@ function getBangkokDateString(date = new Date()) {
   }).format(date);
 }
 
-async function appendDailyUploadError(event: string, payload: Record<string, any>) {
+async function appendDailyUploadError(
+  event: string,
+  payload: Record<string, any>,
+) {
   try {
     await fs.promises.mkdir(uploadLogDir, { recursive: true });
     const now = new Date();
@@ -103,7 +106,10 @@ function getImageExtension(mimetype = "") {
 async function withTimeout<T>(promise: Promise<T>, ms: number, label: string) {
   let timer: NodeJS.Timeout | undefined;
   const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+    timer = setTimeout(
+      () => reject(new Error(`${label} timed out after ${ms}ms`)),
+      ms,
+    );
   });
   try {
     return await Promise.race([promise, timeout]);
@@ -274,6 +280,12 @@ async function startServer() {
   });
 
   app.use(express.json({ limit: "20mb" }));
+  app.use((err: any, req: any, res: any, next: any) => {
+    if (err?.type === "entity.parse.failed") {
+      return res.status(400).json({ error: "Invalid JSON request body" });
+    }
+    return next(err);
+  });
 
   app.use("/api/users", userRouter);
   app.use("/api/user", userRouter);
@@ -297,136 +309,7 @@ async function startServer() {
   app.use("/api/health", healthRouter);
   app.use("/api/logs", logsRouter);
   app.use("/api/export", exportRouter);
-  app.use("/api/admin/titles", titlesRouter);
-
-  // ─── User-Facing Titles API ──────────────────────────────────────────────
-  // GET /api/titles — all active titles, with is_unlocked flag for the requesting user
-  app.get("/api/titles", async (req, res) => {
-    const userId = req.headers["x-user-id"];
-    try {
-      const [titleRows]: any = await pool.query(
-        "SELECT * FROM gamification_titles WHERE is_active=1 ORDER BY created_at ASC"
-      );
-      let unlockedIds: Set<string> = new Set();
-      if (userId && userId !== "undefined") {
-        const [unlocked]: any = await pool.query(
-          "SELECT title_id FROM user_titles WHERE user_id=?",
-          [userId]
-        );
-        unlocked.forEach((r: any) => unlockedIds.add(r.title_id));
-      }
-      const [userRow]: any = await pool.query(
-        "SELECT equipped_title_id FROM users WHERE id=?",
-        [userId]
-      );
-      const equippedId = userRow[0]?.equipped_title_id || null;
-
-      const titles = titleRows.map((r: any) => ({
-        ...r,
-        conditions:
-          typeof r.conditions === "string"
-            ? JSON.parse(r.conditions)
-            : r.conditions,
-        is_active: Boolean(r.is_active),
-        is_unlocked: unlockedIds.has(r.id),
-        is_equipped: r.id === equippedId,
-        unlock_type: r.unlock_type || "conditions",
-        unlock_code: undefined, // never expose
-      }));
-      res.json(titles);
-    } catch (err: any) {
-      res.status(500).json({ error: "Internal Server Error" });
-    }
-  });
-
-  // POST /api/titles/:id/claim — user claims a title (open or code-based)
-  app.post("/api/titles/:id/claim", async (req, res) => {
-    const { id } = req.params;
-    const userId = req.headers["x-user-id"];
-    const { code } = req.body;
-    if (!userId || userId === "undefined")
-      return res.status(401).json({ error: "กรุณาเข้าสู่ระบบก่อน" });
-    try {
-      const [rows]: any = await pool.query(
-        "SELECT id, name, rarity, color, unlock_type, unlock_code, conditions FROM gamification_titles WHERE id=? AND is_active=1",
-        [id]
-      );
-      if (rows.length === 0)
-        return res.status(404).json({ error: "ไม่พบฉายานี้" });
-      const title = rows[0];
-      const conditions = typeof title.conditions === 'string' ? JSON.parse(title.conditions) : (title.conditions || []);
-
-      if (title.unlock_type === "conditions" && conditions.length > 0)
-        return res.status(403).json({ error: "ฉายานี้ต้องปลดล็อคด้วยเงื่อนไข" });
-
-      if (title.unlock_type === "code") {
-        if (!code || code.trim() !== (title.unlock_code || "").trim())
-          return res.status(400).json({ error: "รหัสปลดล็อคไม่ถูกต้อง" });
-      }
-
-      await pool.query(
-        `INSERT IGNORE INTO user_titles (user_id, title_id) VALUES (?, ?)`,
-        [userId, id]
-      );
-
-      // --- Broadcast Title Claim ---
-      try {
-        const [uRows]: any = await pool.query("SELECT fname_th, nickname, picture_url FROM users WHERE id=?", [userId]);
-        const user = uRows[0];
-        const decryptedFname = decrypt(user?.fname_th);
-        const decryptedNickname = decrypt(user?.nickname);
-        const userName = decryptedNickname || decryptedFname || "ผู้ใช้";
-        const userPictureRaw = user?.picture_url || null;
-        let userPicture = userPictureRaw;
-        if (userPicture && !userPicture.startsWith('http') && !userPicture.startsWith('/')) {
-          userPicture = `/uploads/${userPicture}`;
-        }
-        const { getIO } = await import("./lib/realtime.js");
-        const io = getIO();
-        if (io) {
-          io.emit("TITLE_CLAIMED_BROADCAST", {
-            userName,
-            userPicture,
-            titleName: title.name,
-            rarity: title.rarity,
-            color: title.color
-          });
-        }
-      } catch (err) {
-        console.error("Broadcast error:", err);
-      }
-
-      res.json({ success: true });
-    } catch (err: any) {
-      res.status(500).json({ error: "Internal Server Error" });
-    }
-  });
-
-  // PATCH /api/user/:userId/equip-title — equip a title the user has unlocked
-  app.patch("/api/user/:userId/equip-title", async (req, res) => {
-    const { userId } = req.params;
-    const { title_id } = req.body;
-    const requesterId = req.headers["x-user-id"];
-    if (String(requesterId) !== String(userId))
-      return res.status(403).json({ error: "Forbidden" });
-    try {
-      if (title_id !== null) {
-        const [owned]: any = await pool.query(
-          "SELECT id FROM user_titles WHERE user_id=? AND title_id=?",
-          [userId, title_id]
-        );
-        if (owned.length === 0)
-          return res.status(403).json({ error: "Title not unlocked" });
-      }
-      await pool.query(
-        "UPDATE users SET equipped_title_id=? WHERE id=?",
-        [title_id, userId]
-      );
-      res.json({ success: true, equipped_title_id: title_id });
-    } catch (err: any) {
-      res.status(500).json({ error: "Internal Server Error" });
-    }
-  });
+  app.use("/api/notifications", notificationsRouter);
 
   // ── Local File Upload Endpoint ─────────────────────────────────────────────
   // POST /api/upload?type=activity&name=ชื่อกิจกรรม
@@ -474,181 +357,198 @@ async function startServer() {
       });
     },
     async (req, res) => {
-    const file = (req as any).file;
-    if (!file) {
-      console.warn("[upload:no-file]", {
-        bodyKeys: Object.keys(req.body || {}),
-        query: req.query,
-        contentType: req.headers["content-type"],
-      });
-      appendDailyUploadError("no-file", {
-        bodyKeys: Object.keys(req.body || {}),
-        query: req.query,
-        contentType: req.headers["content-type"],
-        contentLength: req.headers["content-length"],
-        userId: req.headers["x-user-id"],
-      });
-      return res.status(400).json({ error: "No image provided" });
-    }
-
-    try {
-      // Determine sub-folder and filename from query params
-      const uploadType = String(req.query.type || "activity"); // "activity" | "profile" | "banners" | "submissions"
-      const rawName = String(req.query.name || "image");
-
-      // Sanitize: keep Thai letters, remove illegal filename chars, collapse spaces
-      const dateStr = getBangkokDateString(); // e.g. 2026-05-05
-      const uniqueSuffix = Math.random().toString(36).substring(2, 8);
-      const safeName = rawName
-        .replace(/[\\/:*?"<>|]/g, "") // remove illegal filename chars
-        .replace(/\s+/g, "-") // spaces → dash
-        .slice(0, 60); // max 60 chars before date
-      const filenameBase = `${safeName || "image"}-${dateStr}-${uniqueSuffix}`;
-
-      // Map uploadType → subfolder (default to "activity" for unknown types)
-      const VALID_FOLDERS = [
-        "activity",
-        "profile",
-        "banners",
-        "submissions",
-      ] as const;
-      const subFolder = VALID_FOLDERS.includes(uploadType as any)
-        ? uploadType
-        : "activity";
-      console.log("[upload:file-received]", {
-        originalname: file.originalname,
-        mimetype: file.mimetype,
-        size: file.size,
-        storage: "memory",
-        bufferBytes: file.buffer?.length,
-        uploadType,
-        subFolder,
-        filenameBase,
-      });
-
-      let outputBuffer = file.buffer;
-      let outputExt = getImageExtension(file.mimetype);
+      const file = (req as any).file;
+      if (!file) {
+        console.warn("[upload:no-file]", {
+          bodyKeys: Object.keys(req.body || {}),
+          query: req.query,
+          contentType: req.headers["content-type"],
+        });
+        appendDailyUploadError("no-file", {
+          bodyKeys: Object.keys(req.body || {}),
+          query: req.query,
+          contentType: req.headers["content-type"],
+          contentLength: req.headers["content-length"],
+          userId: req.headers["x-user-id"],
+        });
+        return res.status(400).json({ error: "No image provided" });
+      }
 
       try {
-        const sharp = (await import("sharp")).default;
-        console.log("[upload:sharp-start]", {
-          originalname: file.originalname,
-          mimetype: file.mimetype,
-          size: file.size,
-        });
+        // Determine sub-folder and filename from query params
+        const uploadType = String(req.query.type || "activity"); // "activity" | "profile" | "banners" | "submissions"
+        const rawName = String(req.query.name || "image");
 
-        const sharpPromise = sharp(file.buffer)
-          .resize(1280, 1280, { fit: "inside", withoutEnlargement: true })
-          .png({ compressionLevel: 9, adaptiveFiltering: true })
-          .toBuffer();
+        // Sanitize: keep Thai letters, remove illegal filename chars, collapse spaces
+        const dateStr = getBangkokDateString(); // e.g. 2026-05-05
+        const uniqueSuffix = Math.random().toString(36).substring(2, 8);
+        const safeName = rawName
+          .replace(/[\\/:*?"<>|]/g, "") // remove illegal filename chars
+          .replace(/\s+/g, "-") // spaces → dash
+          .slice(0, 60); // max 60 chars before date
+        const filenameBase = `${safeName || "image"}-${dateStr}-${uniqueSuffix}`;
 
-        outputBuffer = await withTimeout(sharpPromise, 15_000, "sharp image processing");
-        outputExt = "png";
-        const meta = await sharp(outputBuffer).metadata();
-        console.log(
-          `[upload] ${subFolder}/${filenameBase}.${outputExt} | ${meta.width}x${meta.height}px | ${(outputBuffer.length / 1024).toFixed(0)} KB`,
-        );
-      } catch (sharpError: any) {
-        console.error("[upload:sharp-fallback]", {
-          message: sharpError?.message,
+        // Map uploadType → subfolder (default to "activity" for unknown types)
+        const VALID_FOLDERS = [
+          "activity",
+          "profile",
+          "banners",
+          "submissions",
+        ] as const;
+        const subFolder = VALID_FOLDERS.includes(uploadType as any)
+          ? uploadType
+          : "activity";
+        console.log("[upload:file-received]", {
           originalname: file.originalname,
           mimetype: file.mimetype,
           size: file.size,
-        });
-        appendDailyUploadError("sharp-fallback-original-file", {
-          message: sharpError?.message,
-          originalname: file.originalname,
-          mimetype: file.mimetype,
-          size: file.size,
+          storage: "memory",
+          bufferBytes: file.buffer?.length,
           uploadType,
           subFolder,
+          filenameBase,
         });
-      }
 
-      const filename = `${filenameBase}.${outputExt}`;
-      const destPath = path.join(uploadDir, subFolder, filename);
-      await fs.promises.mkdir(path.dirname(destPath), { recursive: true });
+        let outputBuffer = file.buffer;
+        let outputExt = getImageExtension(file.mimetype);
 
-      // Write processed file, or original file if sharp failed/timed out.
-      await fs.promises.writeFile(destPath, outputBuffer);
-      const writtenStat = await fs.promises.stat(destPath);
-
-      // --- AUTOMATED FILE CLEANUP ---
-      // Delete the old file if oldUrl is provided and points to our uploads directory
-      const oldUrl = req.query.oldUrl ? String(req.query.oldUrl) : null;
-      if (oldUrl && oldUrl.startsWith('/uploads/')) {
         try {
-          // Reconstruct path to prevent directory traversal
-          const relativeOldPath = oldUrl.substring('/uploads/'.length); // e.g., "profile/user-123.png"
-          // We split and join to ensure it's normalized and safely within the uploadDir
-          const oldFilePath = path.join(uploadDir, ...relativeOldPath.split('/').filter(Boolean));
-          
-          // Verify it exists and is indeed a file within the uploadDir
-          if (oldFilePath.startsWith(uploadDir) && fs.existsSync(oldFilePath)) {
-            await fs.promises.unlink(oldFilePath);
-            console.log("[upload:cleanup:success]", { deletedUrl: oldUrl });
-          }
-        } catch (cleanupError: any) {
-          console.warn("[upload:cleanup:failed]", { 
-            oldUrl, 
-            error: cleanupError.message 
+          const sharp = (await import("sharp")).default;
+          console.log("[upload:sharp-start]", {
+            originalname: file.originalname,
+            mimetype: file.mimetype,
+            size: file.size,
+          });
+
+          const sharpPromise = sharp(file.buffer)
+            .resize(1280, 1280, { fit: "inside", withoutEnlargement: true })
+            .png({ compressionLevel: 9, adaptiveFiltering: true })
+            .toBuffer();
+
+          outputBuffer = await withTimeout(
+            sharpPromise,
+            15_000,
+            "sharp image processing",
+          );
+          outputExt = "png";
+          const meta = await sharp(outputBuffer).metadata();
+          console.log(
+            `[upload] ${subFolder}/${filenameBase}.${outputExt} | ${meta.width}x${meta.height}px | ${(outputBuffer.length / 1024).toFixed(0)} KB`,
+          );
+        } catch (sharpError: any) {
+          console.error("[upload:sharp-fallback]", {
+            message: sharpError?.message,
+            originalname: file.originalname,
+            mimetype: file.mimetype,
+            size: file.size,
+          });
+          appendDailyUploadError("sharp-fallback-original-file", {
+            message: sharpError?.message,
+            originalname: file.originalname,
+            mimetype: file.mimetype,
+            size: file.size,
+            uploadType,
+            subFolder,
           });
         }
-      }
 
-      // Return a root-relative URL so Vite dev server & Express serve it correctly
-      console.log("[upload:success]", {
-        url: `/uploads/${subFolder}/${filename}`,
-        destPath,
-        bytesWritten: writtenStat.size,
-        fileExists: fs.existsSync(destPath),
-      });
-      res.json({ url: `/uploads/${subFolder}/${filename}` });
-    } catch (error: any) {
-      console.error("[upload:error]", {
-        message: error?.message,
-        code: error?.code,
-        stack: error?.stack,
-        file: {
-          originalname: file?.originalname,
-          mimetype: file?.mimetype,
-          size: file?.size,
-        },
-        uploadDir,
-      });
-      appendDailyUploadError("processing-error", {
-        message: error?.message,
-        code: error?.code,
-        stack: error?.stack,
-        file: {
-          originalname: file?.originalname,
-          mimetype: file?.mimetype,
-          size: file?.size,
-        },
-        query: req.query,
-        uploadDir,
-      });
-      res.status(500).json({ error: "Failed to process image" });
-    }
-  });
+        const filename = `${filenameBase}.${outputExt}`;
+        const destPath = path.join(uploadDir, subFolder, filename);
+        await fs.promises.mkdir(path.dirname(destPath), { recursive: true });
+
+        // Write processed file, or original file if sharp failed/timed out.
+        await fs.promises.writeFile(destPath, outputBuffer);
+        const writtenStat = await fs.promises.stat(destPath);
+
+        // --- AUTOMATED FILE CLEANUP ---
+        // Delete the old file if oldUrl is provided and points to our uploads directory
+        const oldUrl = req.query.oldUrl ? String(req.query.oldUrl) : null;
+        if (oldUrl && oldUrl.startsWith("/uploads/")) {
+          try {
+            // Reconstruct path to prevent directory traversal
+            const relativeOldPath = oldUrl.substring("/uploads/".length); // e.g., "profile/user-123.png"
+            // We split and join to ensure it's normalized and safely within the uploadDir
+            const oldFilePath = path.join(
+              uploadDir,
+              ...relativeOldPath.split("/").filter(Boolean),
+            );
+
+            // Verify it exists and is indeed a file within the uploadDir
+            if (
+              oldFilePath.startsWith(uploadDir) &&
+              fs.existsSync(oldFilePath)
+            ) {
+              await fs.promises.unlink(oldFilePath);
+              console.log("[upload:cleanup:success]", { deletedUrl: oldUrl });
+            }
+          } catch (cleanupError: any) {
+            console.warn("[upload:cleanup:failed]", {
+              oldUrl,
+              error: cleanupError.message,
+            });
+          }
+        }
+
+        // Return a root-relative URL so Vite dev server & Express serve it correctly
+        console.log("[upload:success]", {
+          url: `/uploads/${subFolder}/${filename}`,
+          destPath,
+          bytesWritten: writtenStat.size,
+          fileExists: fs.existsSync(destPath),
+        });
+        res.json({ url: `/uploads/${subFolder}/${filename}` });
+      } catch (error: any) {
+        console.error("[upload:error]", {
+          message: error?.message,
+          code: error?.code,
+          stack: error?.stack,
+          file: {
+            originalname: file?.originalname,
+            mimetype: file?.mimetype,
+            size: file?.size,
+          },
+          uploadDir,
+        });
+        appendDailyUploadError("processing-error", {
+          message: error?.message,
+          code: error?.code,
+          stack: error?.stack,
+          file: {
+            originalname: file?.originalname,
+            mimetype: file?.mimetype,
+            size: file?.size,
+          },
+          query: req.query,
+          uploadDir,
+        });
+        res.status(500).json({ error: "Failed to process image" });
+      }
+    },
+  );
 
   // DELETE /api/upload — specifically to clean up intermediate uploads if form is cancelled
   app.delete("/api/upload", async (req, res) => {
     try {
       const { oldUrl } = req.body;
-      if (!oldUrl || !oldUrl.startsWith('/uploads/')) {
+      if (!oldUrl || !oldUrl.startsWith("/uploads/")) {
         return res.status(400).json({ error: "Invalid url" });
       }
-      
-      const relativeOldPath = oldUrl.substring('/uploads/'.length);
-      const oldFilePath = path.join(uploadDir, ...relativeOldPath.split('/').filter(Boolean));
-      
+
+      const relativeOldPath = oldUrl.substring("/uploads/".length);
+      const oldFilePath = path.join(
+        uploadDir,
+        ...relativeOldPath.split("/").filter(Boolean),
+      );
+
       if (oldFilePath.startsWith(uploadDir) && fs.existsSync(oldFilePath)) {
         await fs.promises.unlink(oldFilePath);
         console.log("[upload:cleanup:cancelled]", { deletedUrl: oldUrl });
-        return res.json({ success: true, message: "Cleaned up cancelled upload" });
+        return res.json({
+          success: true,
+          message: "Cleaned up cancelled upload",
+        });
       }
-      
+
       res.json({ success: true, message: "File not found or already deleted" });
     } catch (err: any) {
       console.warn("[upload:cleanup:cancelled:failed]", { error: err.message });
@@ -659,35 +559,44 @@ async function startServer() {
   // POST /api/upload-cleanup — สำหรับ navigator.sendBeacon (เมื่อ user ปิด/refresh หน้า)
   // sendBeacon ส่งเป็น POST เสมอ (ไม่สามารถใช้ DELETE ได้)
   // sendBeacon จะส่ง Content-Type: text/plain → ต้องใช้ express.text() ก่อน
-  app.post("/api/upload-cleanup", express.text({ type: '*/*' }), async (req, res) => {
-    try {
-      // parse body (อาจเป็น string หรือ object ขึ้นอยู่กับ middleware ที่รับ)
-      let oldUrl: string | undefined;
-      if (typeof req.body === 'object' && req.body?.oldUrl) {
-        oldUrl = req.body.oldUrl;
-      } else if (typeof req.body === 'string') {
-        try { oldUrl = JSON.parse(req.body)?.oldUrl; } catch {}
+  app.post(
+    "/api/upload-cleanup",
+    express.text({ type: "*/*" }),
+    async (req, res) => {
+      try {
+        // parse body (อาจเป็น string หรือ object ขึ้นอยู่กับ middleware ที่รับ)
+        let oldUrl: string | undefined;
+        if (typeof req.body === "object" && req.body?.oldUrl) {
+          oldUrl = req.body.oldUrl;
+        } else if (typeof req.body === "string") {
+          try {
+            oldUrl = JSON.parse(req.body)?.oldUrl;
+          } catch {}
+        }
+
+        if (!oldUrl || !oldUrl.startsWith("/uploads/submissions/")) {
+          // จำกัดเฉพาะ /uploads/submissions/ เพื่อความปลอดภัย
+          return res.status(204).send(); // No Content (sendBeacon ignores response)
+        }
+
+        const relativeOldPath = oldUrl.substring("/uploads/".length);
+        const oldFilePath = path.join(
+          uploadDir,
+          ...relativeOldPath.split("/").filter(Boolean),
+        );
+
+        if (oldFilePath.startsWith(uploadDir) && fs.existsSync(oldFilePath)) {
+          await fs.promises.unlink(oldFilePath);
+          console.log("[upload:cleanup:beacon]", { deletedUrl: oldUrl });
+        }
+
+        res.status(204).send(); // sendBeacon ไม่อ่าน response body
+      } catch (err: any) {
+        console.warn("[upload:cleanup:beacon:failed]", { error: err.message });
+        res.status(204).send(); // ส่ง 204 เสมอ (sendBeacon ignores errors)
       }
-
-      if (!oldUrl || !oldUrl.startsWith('/uploads/submissions/')) {
-        // จำกัดเฉพาะ /uploads/submissions/ เพื่อความปลอดภัย
-        return res.status(204).send(); // No Content (sendBeacon ignores response)
-      }
-
-      const relativeOldPath = oldUrl.substring('/uploads/'.length);
-      const oldFilePath = path.join(uploadDir, ...relativeOldPath.split('/').filter(Boolean));
-
-      if (oldFilePath.startsWith(uploadDir) && fs.existsSync(oldFilePath)) {
-        await fs.promises.unlink(oldFilePath);
-        console.log("[upload:cleanup:beacon]", { deletedUrl: oldUrl });
-      }
-
-      res.status(204).send(); // sendBeacon ไม่อ่าน response body
-    } catch (err: any) {
-      console.warn("[upload:cleanup:beacon:failed]", { error: err.message });
-      res.status(204).send(); // ส่ง 204 เสมอ (sendBeacon ignores errors)
-    }
-  });
+    },
+  );
 
   // Serve images from users.pending_bot_result for LINE preview
   app.get("/api/bot/image-preview/:userId", async (req, res) => {
@@ -914,61 +823,73 @@ async function startServer() {
     app.use(vite.middlewares);
   } else {
     app.use(express.static(path.join(__dirname, "../dist")));
-    app.get("*", (req, res) =>
-      res.sendFile(path.join(__dirname, "../dist/index.html")),
-    );
+    app.get("*", (req, res) => {
+      res.setHeader("Content-Type", "text/html; charset=utf-8");
+      res.sendFile(path.join(__dirname, "../dist/index.html"));
+    });
   }
 
   // --- Automated Orphan Cleanup Job ---
   // Runs every 1 hour to clean up files older than 2 hours that are not in the database
-  setInterval(async () => {
-    try {
-      const submissionsDir = path.join(uploadDir, 'submissions');
-      if (!fs.existsSync(submissionsDir)) return;
+  setInterval(
+    async () => {
+      try {
+        const submissionsDir = path.join(uploadDir, "submissions");
+        if (!fs.existsSync(submissionsDir)) return;
 
-      const files = await fs.promises.readdir(submissionsDir);
-      if (files.length <= 1) return;
+        const files = await fs.promises.readdir(submissionsDir);
+        if (files.length <= 1) return;
 
-      const { pool } = await import("./mysql.js");
-      const [rows]: any = await pool.query("SELECT img_url FROM submissions WHERE img_url IS NOT NULL");
-      const dbUrls = new Set(rows.map((r: any) => r.img_url));
+        const { pool } = await import("./mysql.js");
+        const [rows]: any = await pool.query(
+          "SELECT img_url FROM submissions WHERE img_url IS NOT NULL",
+        );
+        const dbUrls = new Set(rows.map((r: any) => r.img_url));
 
-      const now = Date.now();
-      const TWO_HOURS = 2 * 60 * 60 * 1000; // ไฟล์เก่ากว่า 2 ชั่วโมง
-      let deletedCount = 0;
+        const now = Date.now();
+        const TWO_HOURS = 2 * 60 * 60 * 1000; // ไฟล์เก่ากว่า 2 ชั่วโมง
+        let deletedCount = 0;
 
-      for (const file of files) {
-        if (file.startsWith('.gitkeep')) continue;
-        const filePath = path.join(submissionsDir, file);
-        
-        let stats;
-        try {
-          stats = await fs.promises.stat(filePath);
-        } catch (e: any) {
-          if (e.code === 'ENOENT') continue; // File was already deleted
-          throw e;
-        }
-        
-        if (now - stats.mtimeMs > TWO_HOURS) {
-          const url = `/uploads/submissions/${file}`;
-          if (!dbUrls.has(url)) {
-            try {
-              await fs.promises.unlink(filePath);
-              deletedCount++;
-            } catch (e: any) {
-              if (e.code !== 'ENOENT') console.error(`[cleanup:orphan] Failed to delete ${file}:`, e);
+        for (const file of files) {
+          if (file.startsWith(".gitkeep")) continue;
+          const filePath = path.join(submissionsDir, file);
+
+          let stats;
+          try {
+            stats = await fs.promises.stat(filePath);
+          } catch (e: any) {
+            if (e.code === "ENOENT") continue; // File was already deleted
+            throw e;
+          }
+
+          if (now - stats.mtimeMs > TWO_HOURS) {
+            const url = `/uploads/submissions/${file}`;
+            if (!dbUrls.has(url)) {
+              try {
+                await fs.promises.unlink(filePath);
+                deletedCount++;
+              } catch (e: any) {
+                if (e.code !== "ENOENT")
+                  console.error(
+                    `[cleanup:orphan] Failed to delete ${file}:`,
+                    e,
+                  );
+              }
             }
           }
         }
+
+        if (deletedCount > 0) {
+          console.log(
+            `[cleanup:orphan] Automatically deleted ${deletedCount} orphaned files.`,
+          );
+        }
+      } catch (err) {
+        console.error("[cleanup:orphan] Error running cleanup job:", err);
       }
-      
-      if (deletedCount > 0) {
-        console.log(`[cleanup:orphan] Automatically deleted ${deletedCount} orphaned files.`);
-      }
-    } catch (err) {
-      console.error("[cleanup:orphan] Error running cleanup job:", err);
-    }
-  }, 60 * 60 * 1000); // ทำงานทุก 1 ชั่วโมง
+    },
+    60 * 60 * 1000,
+  ); // ทำงานทุก 1 ชั่วโมง
 
   server.listen(Number(PORT), "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);

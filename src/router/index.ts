@@ -71,7 +71,11 @@ const routes = [
     path: "/admin",
     name: "Admin",
     component: () => import("../views/Admin.vue"),
-    meta: { title: "ระบบจัดการผู้ดูแล (Admin)", hideNavbar: true, requiresAdmin: true },
+    meta: {
+      title: "ระบบจัดการผู้ดูแล (Admin)",
+      hideNavbar: true,
+      requiresAdmin: true,
+    },
   },
   {
     path: "/create-teams",
@@ -92,6 +96,12 @@ const routes = [
     meta: { title: "โปรไฟล์ส่วนตัว" },
   },
   {
+    path: "/shop",
+    name: "Shop",
+    component: () => import("../views/Shop.vue"),
+    meta: { title: "ร้านแลกของรางวัล" },
+  },
+  {
     path: "/my-activities",
     name: "MyActivities",
     component: () => import("../views/Activities.vue"),
@@ -108,17 +118,18 @@ const router = createRouter({
     // Admin panel has its own scroll container (.content-viewport),
     // so we only need to scroll to top on non-admin route changes.
     // For admin, each component handles its own scroll.
-    if (to.path === '/admin' && from.path === '/admin') {
+    if (to.path === "/admin" && from.path === "/admin") {
       // Tab change inside admin — let the component handle it
       return false;
     }
-    return { top: 0, behavior: 'smooth' };
+    return { top: 0, behavior: "smooth" };
   },
 });
 router.beforeEach(async (to, from, next) => {
   const isRegistering = to.name === "Register";
   const isLoggingIn = to.name === "Login";
-  const isResetting = to.name === "ForgotPassword" || to.name === "ResetPassword";
+  const isResetting =
+    to.name === "ForgotPassword" || to.name === "ResetPassword";
   if (authStore.loading) {
     await new Promise<void>((resolve) => {
       const stop = watch(
@@ -145,8 +156,8 @@ router.beforeEach(async (to, from, next) => {
   // Regular users are redirected to / silently.
   if (to.meta.requiresAdmin && userAfterLoad) {
     const role = userAfterLoad.role as string;
-    if (role !== 'admin') {
-      return next({ path: '/' });
+    if (role !== "admin") {
+      return next({ path: "/" });
     }
   }
   if (userAfterLoad && isLoggingIn) {

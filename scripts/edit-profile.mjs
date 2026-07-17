@@ -1,16 +1,16 @@
-import { readFileSync, writeFileSync } from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import { readFileSync, writeFileSync } from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const filePath = path.resolve(__dirname, '..', 'src', 'views', 'Profile.vue');
+const filePath = path.resolve(__dirname, "..", "src", "views", "Profile.vue");
 
-let content = readFileSync(filePath, 'utf-8');
+let content = readFileSync(filePath, "utf-8");
 
 // ── 1. Add Zap, TrendingUp to lucide-vue-next imports ──
 content = content.replace(
   /(Heart, ImageIcon, Droplets, Lock, LayoutGrid, Medal, Check, PanelLeft, PanelLeftClose, ChevronLeft, X, Clock)(\n\} from 'lucide-vue-next')/,
-  '$1, Zap, TrendingUp$2'
+  "$1, Zap, TrendingUp$2",
 );
 
 // ── 2. Replace useTanitaInsights block with computed properties ──
@@ -347,15 +347,17 @@ const fitnessCSS = `
 // We'll insert it right before the closing of the scoped style tag
 // Find the last `</style>` in the scoped style section
 // The scoped style closes with `</style>` and then there's a global `<style>` tag
-const scopedStyleEnd = '</style>\n<style>\n';
+const scopedStyleEnd = "</style>\n<style>\n";
 if (content.includes(scopedStyleEnd)) {
-  content = content.replace(scopedStyleEnd, fitnessCSS + '\n' + scopedStyleEnd);
+  content = content.replace(scopedStyleEnd, fitnessCSS + "\n" + scopedStyleEnd);
 }
 
 // Write the file
-writeFileSync(filePath, content, 'utf-8');
-console.log('✅ Profile.vue updated successfully');
-console.log('Changes made:');
-console.log('  1. Added Zap, TrendingUp to lucide-vue-next imports');
-console.log('  2. Replaced useTanitaInsights with bodyScore, scoreColor, visceralStatus, hydrationStatus computed properties');
-console.log('  3. Added fitness-design CSS styles');
+writeFileSync(filePath, content, "utf-8");
+console.log("✅ Profile.vue updated successfully");
+console.log("Changes made:");
+console.log("  1. Added Zap, TrendingUp to lucide-vue-next imports");
+console.log(
+  "  2. Replaced useTanitaInsights with bodyScore, scoreColor, visceralStatus, hydrationStatus computed properties",
+);
+console.log("  3. Added fitness-design CSS styles");

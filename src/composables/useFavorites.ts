@@ -1,6 +1,6 @@
-import { ref, onMounted } from 'vue';
-import { authStore } from '../store/auth';
-import { showError } from '../lib/swal';
+import { ref, onMounted } from "vue";
+import { authStore } from "../store/auth";
+import { showError } from "../lib/swal";
 const favoriteIds = ref<Set<number>>(new Set());
 const counts = ref<Record<number, number>>({});
 const isLoading = ref(false);
@@ -11,7 +11,7 @@ export function useFavorites() {
     try {
       // Get all favorites for this user
       const res = await fetch(`/api/fav-user/${authStore.user.id}`, {
-        headers: { 'x-user-id': String(authStore.user.id) }
+        headers: { "x-user-id": String(authStore.user.id) },
       });
       if (res.ok) {
         const data = await res.json();
@@ -25,8 +25,8 @@ export function useFavorites() {
   };
   const toggleFavorite = async (eventId: number) => {
     if (!authStore.user?.id) {
-        showError('กรุณาเข้าสู่ระบบก่อนบันทึกกิจกรรมเป็นรายการโปรดครับ');
-        return;
+      showError("กรุณาเข้าสู่ระบบก่อนบันทึกกิจกรรมเป็นรายการโปรดครับ");
+      return;
     }
     const isFav = favoriteIds.value.has(eventId);
     // Optimistic Update with reactive trigger
@@ -36,21 +36,21 @@ export function useFavorites() {
     favoriteIds.value = newSet;
     try {
       const res = await fetch(`/api/fav-toggle/${eventId}`, {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'x-user-id': String(authStore.user.id)
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-user-id": String(authStore.user.id),
         },
-        body: JSON.stringify({ userId: authStore.user.id })
+        body: JSON.stringify({ userId: authStore.user.id }),
       });
       if (!res.ok) {
         const errorData = await res.json();
-        throw new Error(errorData.error || 'Server error');
+        throw new Error(errorData.error || "Server error");
       }
       const data = await res.json();
       // Ensure sync with server response
       const serverSet = new Set(favoriteIds.value);
-      if (data.action === 'added') serverSet.add(eventId);
+      if (data.action === "added") serverSet.add(eventId);
       else serverSet.delete(eventId);
       favoriteIds.value = serverSet;
     } catch (e: any) {
@@ -59,13 +59,13 @@ export function useFavorites() {
       if (isFav) rollbackSet.add(eventId);
       else rollbackSet.delete(eventId);
       favoriteIds.value = rollbackSet;
-      showError(e.message || 'เกิดข้อผิดพลาด ไม่สามารถดำเนินการได้');
+      showError(e.message || "เกิดข้อผิดพลาด ไม่สามารถดำเนินการได้");
     }
   };
   const fetchEventFavoriteData = async (eventId: number) => {
     try {
       const res = await fetch(`/api/fav-status/${eventId}`, {
-        headers: { 'x-user-id': authStore.user?.id || '' }
+        headers: { "x-user-id": authStore.user?.id || "" },
       });
       if (res.ok) {
         const data = await res.json();
@@ -75,8 +75,7 @@ export function useFavorites() {
         favoriteIds.value = nextSet;
         return { count: data.count || 0, isFavorited: !!data.isFavorited };
       }
-    } catch (e) {
-    }
+    } catch (e) {}
     return { count: 0, isFavorited: false };
   };
   return {
@@ -84,6 +83,6 @@ export function useFavorites() {
     isLoading,
     fetchFavorites,
     toggleFavorite,
-    fetchEventFavoriteData
+    fetchEventFavoriteData,
   };
-}
+}

@@ -23,26 +23,33 @@ const computedAge = (() => {
 })();
 // === Upload & AI ===
 const isDragging = ref(false);
-const loadingMessages = computed(() => langStore.locale === 'th' ? [
-  "กำลังอัปโหลดรูปภาพใบเสร็จ...",
-  "AI กำลังสแกนตัวเลขบนหน้าจอ...",
-  "กำลังวิเคราะห์ข้อมูลสุขภาพ...",
-  "เกือบเสร็จแล้ว รออีกนิดนะ...",
-  "กำลังจัดเรียงข้อมูลลงแบบฟอร์ม...",
-] : [
-  "Uploading receipt image...",
-  "AI is scanning numbers on the screen...",
-  "Analyzing health data...",
-  "Almost done, please wait...",
-  "Organizing data into the form...",
-]);
+const loadingMessages = computed(() =>
+  langStore.locale === "th"
+    ? [
+        "กำลังอัปโหลดรูปภาพใบเสร็จ...",
+        "AI กำลังสแกนตัวเลขบนหน้าจอ...",
+        "กำลังวิเคราะห์ข้อมูลสุขภาพ...",
+        "เกือบเสร็จแล้ว รออีกนิดนะ...",
+        "กำลังจัดเรียงข้อมูลลงแบบฟอร์ม...",
+      ]
+    : [
+        "Uploading receipt image...",
+        "AI is scanning numbers on the screen...",
+        "Analyzing health data...",
+        "Almost done, please wait...",
+        "Organizing data into the form...",
+      ],
+);
 const currentLoadingIndex = ref(0);
-const currentLoadingMessage = computed(() => loadingMessages.value[currentLoadingIndex.value]);
+const currentLoadingMessage = computed(
+  () => loadingMessages.value[currentLoadingIndex.value],
+);
 let messageInterval: any = null;
 const startLoadingMessages = () => {
   currentLoadingIndex.value = 0;
   messageInterval = setInterval(() => {
-    currentLoadingIndex.value = (currentLoadingIndex.value + 1) % loadingMessages.value.length;
+    currentLoadingIndex.value =
+      (currentLoadingIndex.value + 1) % loadingMessages.value.length;
   }, 3500);
 };
 const stopLoadingMessages = () => {
@@ -60,7 +67,10 @@ const handleFileSelect = async (file: File) => {
   if (!file || !file.type.startsWith("image/")) {
     swal.fire({
       icon: "error",
-      title: langStore.locale === 'th' ? "กรุณาอัปโหลดไฟล์รูปภาพเท่านั้น" : "Please upload an image file only",
+      title:
+        langStore.locale === "th"
+          ? "กรุณาอัปโหลดไฟล์รูปภาพเท่านั้น"
+          : "Please upload an image file only",
       toast: true,
       position: "top-end",
       timer: 3000,
@@ -92,11 +102,14 @@ const handleFileSelect = async (file: File) => {
       if (response.status === 422) {
         swal.fire({
           icon: "error",
-          title: langStore.locale === 'th' ? "รูปภาพไม่ถูกต้อง" : "Invalid Image",
+          title:
+            langStore.locale === "th" ? "รูปภาพไม่ถูกต้อง" : "Invalid Image",
           text:
             aiRaw?.error ||
-            (langStore.locale === 'th' ? "รูปภาพที่ส่งมาไม่ใช่ใบตรวจสุขภาพ กรุณาลองใหม่อีกครั้ง หรือกรอกข้อมูลด้วยตนเอง" : "The uploaded image is not a health check receipt. Please try again or fill in manually."),
-          confirmButtonText: langStore.locale === 'th' ? "ตกลง" : "OK",
+            (langStore.locale === "th"
+              ? "รูปภาพที่ส่งมาไม่ใช่ใบตรวจสุขภาพ กรุณาลองใหม่อีกครั้ง หรือกรอกข้อมูลด้วยตนเอง"
+              : "The uploaded image is not a health check receipt. Please try again or fill in manually."),
+          confirmButtonText: langStore.locale === "th" ? "ตกลง" : "OK",
           confirmButtonColor: "#356768",
         });
         return;
@@ -104,9 +117,16 @@ const handleFileSelect = async (file: File) => {
 
       swal.fire({
         icon: "warning",
-        title: langStore.locale === 'th' ? "AI ไม่สามารถวิเคราะห์ข้อมูลได้" : "AI couldn't analyze data",
-        text: aiRaw?.error || (langStore.locale === 'th' ? "กรุณากรอกข้อมูลด้วยตนเอง" : "Please fill in manually"),
-        confirmButtonText: langStore.locale === 'th' ? "ตกลง" : "OK",
+        title:
+          langStore.locale === "th"
+            ? "AI ไม่สามารถวิเคราะห์ข้อมูลได้"
+            : "AI couldn't analyze data",
+        text:
+          aiRaw?.error ||
+          (langStore.locale === "th"
+            ? "กรุณากรอกข้อมูลด้วยตนเอง"
+            : "Please fill in manually"),
+        confirmButtonText: langStore.locale === "th" ? "ตกลง" : "OK",
         confirmButtonColor: "#356768",
       });
       return;
@@ -115,9 +135,11 @@ const handleFileSelect = async (file: File) => {
     if (aiRaw?.ok === false && aiRaw?.code === "INVALID_IMAGE") {
       swal.fire({
         icon: "error",
-        title: langStore.locale === 'th' ? "รูปภาพไม่ถูกต้อง" : "Invalid Image",
-        text: aiRaw?.error || (langStore.locale === 'th' ? "รูปภาพไม่ถูกต้อง" : "Invalid Image"),
-        confirmButtonText: langStore.locale === 'th' ? "ตกลง" : "OK",
+        title: langStore.locale === "th" ? "รูปภาพไม่ถูกต้อง" : "Invalid Image",
+        text:
+          aiRaw?.error ||
+          (langStore.locale === "th" ? "รูปภาพไม่ถูกต้อง" : "Invalid Image"),
+        confirmButtonText: langStore.locale === "th" ? "ตกลง" : "OK",
         confirmButtonColor: "#356768",
       });
       return;
@@ -154,8 +176,14 @@ const handleFileSelect = async (file: File) => {
 
     swal.fire({
       icon: "success",
-      title: langStore.locale === 'th' ? "AI วิเคราะห์ข้อมูลสำเร็จ!" : "AI analysis successful!",
-      text: langStore.locale === 'th' ? `AI กรอกข้อมูลให้ ${filledCount} ช่อง แล้ว กรุณาตรวจสอบความถูกต้องก่อนบันทึก` : `AI filled in ${filledCount} fields. Please review before saving.`,
+      title:
+        langStore.locale === "th"
+          ? "AI วิเคราะห์ข้อมูลสำเร็จ!"
+          : "AI analysis successful!",
+      text:
+        langStore.locale === "th"
+          ? `AI กรอกข้อมูลให้ ${filledCount} ช่อง แล้ว กรุณาตรวจสอบความถูกต้องก่อนบันทึก`
+          : `AI filled in ${filledCount} fields. Please review before saving.`,
       toast: true,
       position: "top-end",
       timer: 5000,
@@ -164,9 +192,15 @@ const handleFileSelect = async (file: File) => {
   } catch {
     swal.fire({
       icon: "warning",
-      title: langStore.locale === 'th' ? "AI ไม่สามารถระบุข้อมูลจากรูปภาพ" : "AI couldn't identify data from image",
-      text: langStore.locale === 'th' ? "กรุณากรอกข้อมูลด้วยตนเอง" : "Please fill in manually",
-      confirmButtonText: langStore.locale === 'th' ? "ตกลง" : "OK",
+      title:
+        langStore.locale === "th"
+          ? "AI ไม่สามารถระบุข้อมูลจากรูปภาพ"
+          : "AI couldn't identify data from image",
+      text:
+        langStore.locale === "th"
+          ? "กรุณากรอกข้อมูลด้วยตนเอง"
+          : "Please fill in manually",
+      confirmButtonText: langStore.locale === "th" ? "ตกลง" : "OK",
       confirmButtonColor: "#356768",
     });
   } finally {
@@ -244,9 +278,16 @@ onMounted(async () => {
           // แจ้งเตือนให้ผู้ใช้ตรวจสอบความถูกต้อง
           swal.fire({
             icon: "info",
-            title: langStore.locale === 'th' ? "ตรวจสอบความถูกต้อง" : "Please Verify Data",
-            text: langStore.locale === 'th' ? "ระบบได้กรอกข้อมูลเบื้องต้นจาก AI ให้แล้ว กรุณาตรวจสอบความถูกต้องอีกครั้งก่อนบันทึกครับ" : "The system has filled in initial data from AI. Please verify its accuracy before saving.",
-            confirmButtonText: langStore.locale === 'th' ? "รับทราบ" : "Acknowledge",
+            title:
+              langStore.locale === "th"
+                ? "ตรวจสอบความถูกต้อง"
+                : "Please Verify Data",
+            text:
+              langStore.locale === "th"
+                ? "ระบบได้กรอกข้อมูลเบื้องต้นจาก AI ให้แล้ว กรุณาตรวจสอบความถูกต้องอีกครั้งก่อนบันทึกครับ"
+                : "The system has filled in initial data from AI. Please verify its accuracy before saving.",
+            confirmButtonText:
+              langStore.locale === "th" ? "รับทราบ" : "Acknowledge",
             confirmButtonColor: "#06C755",
           });
         }
@@ -303,7 +344,10 @@ const handleSubmit = async () => {
     localStorage.removeItem(getDraftKey());
     swal.fire({
       icon: "success",
-      title: langStore.locale === 'th' ? "บันทึกข้อมูลเรียบร้อยแล้ว" : "Data saved successfully",
+      title:
+        langStore.locale === "th"
+          ? "บันทึกข้อมูลเรียบร้อยแล้ว"
+          : "Data saved successfully",
       toast: true,
       position: "top-end",
       timer: 3000,
@@ -323,7 +367,7 @@ const handleSubmit = async () => {
   } catch (err: any) {
     swal.fire({
       icon: "error",
-      title: langStore.locale === 'th' ? "เกิดข้อผิดพลาด" : "An error occurred",
+      title: langStore.locale === "th" ? "เกิดข้อผิดพลาด" : "An error occurred",
       text: err.message,
     });
   } finally {
@@ -345,12 +389,23 @@ const handleBack = () => {
         </button>
       </div>
       <div class="header-section">
-        <h1>{{ langStore.locale === 'th' ? 'บันทึกองค์ประกอบร่างกาย' : 'Body Composition Record' }}</h1>
+        <h1>
+          {{
+            langStore.locale === "th"
+              ? "บันทึกองค์ประกอบร่างกาย"
+              : "Body Composition Record"
+          }}
+        </h1>
         <p v-if="route.query.session_label" class="session-tag">
-          {{ langStore.locale === 'th' ? 'สำหรับช่วง:' : 'For Session:' }} <strong>{{ route.query.session_label }}</strong>
+          {{ langStore.locale === "th" ? "สำหรับช่วง:" : "For Session:" }}
+          <strong>{{ route.query.session_label }}</strong>
         </p>
         <p class="subtitle">
-          {{ langStore.locale === 'th' ? 'กรุณาระบุข้อมูลสุขภาพของคุณให้ครบถ้วนเพื่อความแม่นยำในการวิเคราะห์' : 'Please provide complete health data for accurate analysis.' }}
+          {{
+            langStore.locale === "th"
+              ? "กรุณาระบุข้อมูลสุขภาพของคุณให้ครบถ้วนเพื่อความแม่นยำในการวิเคราะห์"
+              : "Please provide complete health data for accurate analysis."
+          }}
         </p>
       </div>
       <form @submit.prevent="handleSubmit" class="form-content fade-in">
@@ -375,7 +430,9 @@ const handleBack = () => {
                 <path d="M12 20h9" />
                 <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
               </svg>
-              <span>{{ langStore.locale === 'th' ? 'กรอกข้อมูลเอง' : 'Manual Entry' }}</span>
+              <span>{{
+                langStore.locale === "th" ? "กรอกข้อมูลเอง" : "Manual Entry"
+              }}</span>
             </div>
           </label>
           <label class="mode-card" :class="{ active: inputMethod === 'ai' }">
@@ -395,7 +452,11 @@ const handleBack = () => {
                 <circle cx="9" cy="9" r="2" />
                 <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />
               </svg>
-              <span>{{ langStore.locale === 'th' ? 'AI ช่วยอ่านจากรูป' : 'AI Scan from Image' }}</span>
+              <span>{{
+                langStore.locale === "th"
+                  ? "AI ช่วยอ่านจากรูป"
+                  : "AI Scan from Image"
+              }}</span>
             </div>
           </label>
         </div>
@@ -439,19 +500,25 @@ const handleBack = () => {
                   <polyline points="17 8 12 3 7 8" />
                   <line x1="12" x2="12" y1="3" y2="15" />
                 </svg>
-                <span class="upload-main-text"
-                  >{{ langStore.locale === 'th' ? 'ถ่ายภาพ, อัปโหลด หรือวางรูป (Paste)' : 'Take Photo, Upload, or Paste Image' }}</span
-                >
-                <span class="upload-sub-text"
-                  >{{ langStore.locale === 'th' ? 'AI จะช่วยกรอกข้อมูลจากใบเสร็จ Tanita ให้อัตโนมัติ' : 'AI will automatically fill data from the Tanita receipt.' }}</span
-                >
+                <span class="upload-main-text">{{
+                  langStore.locale === "th"
+                    ? "ถ่ายภาพ, อัปโหลด หรือวางรูป (Paste)"
+                    : "Take Photo, Upload, or Paste Image"
+                }}</span>
+                <span class="upload-sub-text">{{
+                  langStore.locale === "th"
+                    ? "AI จะช่วยกรอกข้อมูลจากใบเสร็จ Tanita ให้อัตโนมัติ"
+                    : "AI will automatically fill data from the Tanita receipt."
+                }}</span>
               </label>
             </div>
           </div>
         </transition>
         <!-- Form Fields -->
         <div class="premium-card">
-          <h3 class="section-title">{{ langStore.locale === 'th' ? 'ข้อมูลภาพรวม' : 'Overview' }}</h3>
+          <h3 class="section-title">
+            {{ langStore.locale === "th" ? "ข้อมูลภาพรวม" : "Overview" }}
+          </h3>
           <div class="grid-3 mb-6">
             <div class="premium-input-group">
               <input
@@ -460,7 +527,9 @@ const handleBack = () => {
                 placeholder=" "
                 required
               />
-              <label>{{ langStore.locale === 'th' ? 'ส่วนสูง (cm) *' : 'Height (cm) *' }}</label>
+              <label>{{
+                langStore.locale === "th" ? "ส่วนสูง (cm) *" : "Height (cm) *"
+              }}</label>
             </div>
             <div class="premium-input-group">
               <input
@@ -470,30 +539,40 @@ const handleBack = () => {
                 placeholder=" "
                 required
               />
-              <label>{{ langStore.locale === 'th' ? 'น้ำหนัก (kg) *' : 'Weight (kg) *' }}</label>
+              <label>{{
+                langStore.locale === "th" ? "น้ำหนัก (kg) *" : "Weight (kg) *"
+              }}</label>
             </div>
             <div class="premium-input-group">
               <input type="text" v-model="form.body_type" placeholder=" " />
-              <label>{{ langStore.locale === 'th' ? 'รูปร่าง (Body Type)' : 'Body Type' }}</label>
+              <label>{{
+                langStore.locale === "th" ? "รูปร่าง (Body Type)" : "Body Type"
+              }}</label>
             </div>
           </div>
           <div class="grid-2 mb-6">
             <div class="premium-input-group">
               <input type="number" v-model="form.age" placeholder=" " />
               <label
-                >{{ langStore.locale === 'th' ? 'อายุ (ปี)' : 'Age (years)' }}
-                <span v-if="computedAge" class="text-xs text-gray-400"
-                  >{{ langStore.locale === 'th' ? '(คำนวณจากวันเกิด)' : '(Calculated from birthday)' }}</span
-                ></label
+                >{{ langStore.locale === "th" ? "อายุ (ปี)" : "Age (years)" }}
+                <span v-if="computedAge" class="text-xs text-gray-400">{{
+                  langStore.locale === "th"
+                    ? "(คำนวณจากวันเกิด)"
+                    : "(Calculated from birthday)"
+                }}</span></label
               >
             </div>
             <div class="premium-input-group">
               <input type="text" v-model="form.gender" placeholder=" " />
-              <label>{{ langStore.locale === 'th' ? 'เพศ' : 'Gender' }}</label>
+              <label>{{ langStore.locale === "th" ? "เพศ" : "Gender" }}</label>
             </div>
           </div>
           <h3 class="section-title mt-4">
-            {{ langStore.locale === 'th' ? 'องค์ประกอบร่างกาย (Body Composition)' : 'Body Composition' }}
+            {{
+              langStore.locale === "th"
+                ? "องค์ประกอบร่างกาย (Body Composition)"
+                : "Body Composition"
+            }}
           </h3>
           <div class="grid-2 mb-6">
             <div class="premium-input-group small">
@@ -502,7 +581,9 @@ const handleBack = () => {
                 step="0.1"
                 v-model="form.fat_pc"
                 placeholder=" "
-              /><label>{{ langStore.locale === 'th' ? 'ไขมัน (%)' : 'Fat (%)' }}</label>
+              /><label>{{
+                langStore.locale === "th" ? "ไขมัน (%)" : "Fat (%)"
+              }}</label>
             </div>
             <div class="premium-input-group small">
               <input
@@ -510,7 +591,9 @@ const handleBack = () => {
                 step="0.1"
                 v-model="form.fat_mass"
                 placeholder=" "
-              /><label>{{ langStore.locale === 'th' ? 'มวลไขมัน (kg)' : 'Fat Mass (kg)' }}</label>
+              /><label>{{
+                langStore.locale === "th" ? "มวลไขมัน (kg)" : "Fat Mass (kg)"
+              }}</label>
             </div>
             <div class="premium-input-group small">
               <input
@@ -518,7 +601,11 @@ const handleBack = () => {
                 step="0.1"
                 v-model="form.ffm"
                 placeholder=" "
-              /><label>{{ langStore.locale === 'th' ? 'มวลไร้ไขมัน FFM (kg)' : 'Fat Free Mass (kg)' }}</label>
+              /><label>{{
+                langStore.locale === "th"
+                  ? "มวลไร้ไขมัน FFM (kg)"
+                  : "Fat Free Mass (kg)"
+              }}</label>
             </div>
             <div class="premium-input-group small">
               <input
@@ -526,7 +613,11 @@ const handleBack = () => {
                 step="0.1"
                 v-model="form.muscle_mass"
                 placeholder=" "
-              /><label>{{ langStore.locale === 'th' ? 'มวลกล้ามเนื้อ (kg)' : 'Muscle Mass (kg)' }}</label>
+              /><label>{{
+                langStore.locale === "th"
+                  ? "มวลกล้ามเนื้อ (kg)"
+                  : "Muscle Mass (kg)"
+              }}</label>
             </div>
             <div class="premium-input-group small">
               <input
@@ -534,7 +625,9 @@ const handleBack = () => {
                 step="0.1"
                 v-model="form.tbw_mass"
                 placeholder=" "
-              /><label>{{ langStore.locale === 'th' ? 'มวลน้ำ (kg)' : 'TBW Mass (kg)' }}</label>
+              /><label>{{
+                langStore.locale === "th" ? "มวลน้ำ (kg)" : "TBW Mass (kg)"
+              }}</label>
             </div>
             <div class="premium-input-group small">
               <input
@@ -542,7 +635,9 @@ const handleBack = () => {
                 step="0.1"
                 v-model="form.tbw_pc"
                 placeholder=" "
-              /><label>{{ langStore.locale === 'th' ? 'น้ำในร่างกาย (%)' : 'TBW (%)' }}</label>
+              /><label>{{
+                langStore.locale === "th" ? "น้ำในร่างกาย (%)" : "TBW (%)"
+              }}</label>
             </div>
             <div class="premium-input-group small">
               <input
@@ -550,7 +645,9 @@ const handleBack = () => {
                 step="0.1"
                 v-model="form.bone_mass"
                 placeholder=" "
-              /><label>{{ langStore.locale === 'th' ? 'มวลกระดูก (kg)' : 'Bone Mass (kg)' }}</label>
+              /><label>{{
+                langStore.locale === "th" ? "มวลกระดูก (kg)" : "Bone Mass (kg)"
+              }}</label>
             </div>
             <div class="premium-input-group small">
               <input
@@ -558,7 +655,11 @@ const handleBack = () => {
                 step="0.1"
                 v-model="form.clothes_weight"
                 placeholder=" "
-              /><label>{{ langStore.locale === 'th' ? 'น้ำหนักเสื้อผ้า (kg)' : 'Clothes Weight (kg)' }}</label>
+              /><label>{{
+                langStore.locale === "th"
+                  ? "น้ำหนักเสื้อผ้า (kg)"
+                  : "Clothes Weight (kg)"
+              }}</label>
             </div>
             <div class="premium-input-group small">
               <input
@@ -566,10 +667,18 @@ const handleBack = () => {
                 step="0.1"
                 v-model="form.waist_cm"
                 placeholder=" "
-              /><label>{{ langStore.locale === 'th' ? 'รอบเอว (cm)' : 'Waist (cm)' }}</label>
+              /><label>{{
+                langStore.locale === "th" ? "รอบเอว (cm)" : "Waist (cm)"
+              }}</label>
             </div>
           </div>
-          <h3 class="section-title mt-4">{{ langStore.locale === 'th' ? 'ระบบเผาผลาญ & ดัชนีสุขภาพ' : 'Metabolism & Health Index' }}</h3>
+          <h3 class="section-title mt-4">
+            {{
+              langStore.locale === "th"
+                ? "ระบบเผาผลาญ & ดัชนีสุขภาพ"
+                : "Metabolism & Health Index"
+            }}
+          </h3>
           <div class="grid-2">
             <div class="premium-input-group small">
               <input
@@ -590,7 +699,11 @@ const handleBack = () => {
                 type="number"
                 v-model="form.metabolic_age"
                 placeholder=" "
-              /><label>{{ langStore.locale === 'th' ? 'อายุเมตาบอลิก (ปี)' : 'Metabolic Age (years)' }}</label>
+              /><label>{{
+                langStore.locale === "th"
+                  ? "อายุเมตาบอลิก (ปี)"
+                  : "Metabolic Age (years)"
+              }}</label>
             </div>
             <div class="premium-input-group small">
               <input
@@ -598,7 +711,9 @@ const handleBack = () => {
                 step="0.1"
                 v-model="form.visceral_fat"
                 placeholder=" "
-              /><label>{{ langStore.locale === 'th' ? 'ไขมันช่องท้อง' : 'Visceral Fat' }}</label>
+              /><label>{{
+                langStore.locale === "th" ? "ไขมันช่องท้อง" : "Visceral Fat"
+              }}</label>
             </div>
             <div class="premium-input-group small">
               <input
@@ -606,7 +721,9 @@ const handleBack = () => {
                 step="0.1"
                 v-model="form.bmi"
                 placeholder=" "
-              /><label>{{ langStore.locale === 'th' ? 'ค่าดัชนีมวลกาย (BMI)' : 'BMI' }}</label>
+              /><label>{{
+                langStore.locale === "th" ? "ค่าดัชนีมวลกาย (BMI)" : "BMI"
+              }}</label>
             </div>
             <div class="premium-input-group small">
               <input
@@ -614,7 +731,11 @@ const handleBack = () => {
                 step="0.1"
                 v-model="form.ideal_weight"
                 placeholder=" "
-              /><label>{{ langStore.locale === 'th' ? 'น้ำหนักเหมาะสม (kg)' : 'Ideal Weight (kg)' }}</label>
+              /><label>{{
+                langStore.locale === "th"
+                  ? "น้ำหนักเหมาะสม (kg)"
+                  : "Ideal Weight (kg)"
+              }}</label>
             </div>
             <div class="premium-input-group small">
               <input
@@ -622,7 +743,11 @@ const handleBack = () => {
                 step="0.1"
                 v-model="form.obesity_degree"
                 placeholder=" "
-              /><label>{{ langStore.locale === 'th' ? 'ระดับความอ้วน (%)' : 'Obesity Degree (%)' }}</label>
+              /><label>{{
+                langStore.locale === "th"
+                  ? "ระดับความอ้วน (%)"
+                  : "Obesity Degree (%)"
+              }}</label>
             </div>
             <div class="premium-input-group small">
               <input
@@ -641,7 +766,13 @@ const handleBack = () => {
           >
             <Loader2 v-if="isSubmitting" class="spin" />
             <span>{{
-              isSubmitting ? (langStore.locale === 'th' ? 'กำลังบันทึก...' : 'Saving...') : (langStore.locale === 'th' ? 'ยืนยันบันทึกข้อมูล' : 'Confirm Save')
+              isSubmitting
+                ? langStore.locale === "th"
+                  ? "กำลังบันทึก..."
+                  : "Saving..."
+                : langStore.locale === "th"
+                  ? "ยืนยันบันทึกข้อมูล"
+                  : "Confirm Save"
             }}</span>
           </button>
         </div>

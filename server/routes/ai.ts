@@ -34,7 +34,8 @@ const aiLimiter = rateLimit({
   // Skip rate limit for internal server calls (bot uses localhost)
   skip: (req) => {
     const ip = req.ip || req.socket?.remoteAddress || "";
-    const isInternal = ip === "127.0.0.1" || ip === "::1" || ip === "::ffff:127.0.0.1";
+    const isInternal =
+      ip === "127.0.0.1" || ip === "::1" || ip === "::ffff:127.0.0.1";
     if (isInternal) {
       console.log("[AI] Internal bot request — skipping rate limit");
     }
@@ -191,7 +192,7 @@ router.post("/analyze-mission", aiLimiter, async (req, res) => {
     const brainPrompt = `You are a precise health and fitness data extractor. You MUST follow all rules strictly.
 
 TARGET TASK: "${taskTitle}"
-TARGET UNIT: "${metricUnit || 'STANDARD METRIC (km, minutes, kcal, steps)'}" ← You MUST return a value in this unit. Convert if the image uses Imperial (e.g., miles to km).
+TARGET UNIT: "${metricUnit || "STANDARD METRIC (km, minutes, kcal, steps)"}" ← You MUST return a value in this unit. Convert if the image uses Imperial (e.g., miles to km).
 
 ════════════════════════════════════════
 MANDATORY EXTRACTION MAPPING (Based on Target Unit):

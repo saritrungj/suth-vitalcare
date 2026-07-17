@@ -19,7 +19,9 @@ export const safeImageUrl = (url: unknown): string => {
     // Resolve against current origin so relative paths are accepted too.
     const parsed = new URL(
       trimmed,
-      typeof window !== "undefined" ? window.location.origin : "http://localhost",
+      typeof window !== "undefined"
+        ? window.location.origin
+        : "http://localhost",
     );
     if (parsed.protocol === "http:" || parsed.protocol === "https:") {
       return trimmed;

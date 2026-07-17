@@ -42,7 +42,15 @@ const ALLOWED_TAGS = [
   "td",
 ];
 
-const ALLOWED_ATTR = ["href", "title", "target", "rel", "class", "colspan", "rowspan"];
+const ALLOWED_ATTR = [
+  "href",
+  "title",
+  "target",
+  "rel",
+  "class",
+  "colspan",
+  "rowspan",
+];
 
 export const sanitizeHtml = (html: string): string => {
   if (!html) return "";

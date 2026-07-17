@@ -760,7 +760,10 @@ function buildConfirmationFlex(
 
     if (result.type === "PHOTO_PROOF") {
       rows.push({ name: "ประเภทการส่ง", value: "รูปภาพหลักฐานภารกิจ" });
-      rows.push({ name: "สถานะการส่ง", value: "พร้อมบันทึก (ไม่ต้องตรวจ OCR)" });
+      rows.push({
+        name: "สถานะการส่ง",
+        value: "พร้อมบันทึก (ไม่ต้องตรวจ OCR)",
+      });
     } else if (distanceTypes.includes(result.type)) {
       const dist = safeNum(result.value) ?? safeNum(result.distance);
       if (dist !== null)
@@ -1160,7 +1163,10 @@ async function handleEvent(event: any) {
                 {
                   type: "text",
                   text: `✅ คุณ ${displayName} เลือก "${taskName}"\n📸 กรุณาส่งรูปภาพหลักฐานใหม่สำหรับภารกิจนี้ได้เลยครับ`,
-                  quickReply: await getPhotoUploadQuickReply(userId, isGroupChat),
+                  quickReply: await getPhotoUploadQuickReply(
+                    userId,
+                    isGroupChat,
+                  ),
                 },
               ],
             });
@@ -1337,16 +1343,19 @@ async function handleEvent(event: any) {
           day: "2-digit",
         }).format(new Date());
       };
-      
+
       const dateStr = getBangkokDateString();
       const uniqueSuffix = Math.random().toString(36).substring(2, 8);
       const filename = `bot-${userId}-${dateStr}-${uniqueSuffix}.png`;
-      const uploadDir = path.join(__dirname, "../../public/uploads/submissions");
-      
+      const uploadDir = path.join(
+        __dirname,
+        "../../public/uploads/submissions",
+      );
+
       await fs.mkdir(uploadDir, { recursive: true });
       const destPath = path.join(uploadDir, filename);
       await fs.writeFile(destPath, optimizedBuf);
-      
+
       const publicUrl = `/uploads/submissions/${filename}`;
 
       const apiBase = process.env.VITE_API_URL || "";
@@ -1369,14 +1378,22 @@ async function handleEvent(event: any) {
             [lastBotTaskId],
           );
           if (taskInfo.length > 0) {
-            if (taskInfo[0].metric_unit) targetUnit = taskInfo[0].metric_unit.toLowerCase();
+            if (taskInfo[0].metric_unit)
+              targetUnit = taskInfo[0].metric_unit.toLowerCase();
             // use_ocr: 1/true/null = enabled, 0/false = photo-proof only
             const rawUseOcr = taskInfo[0].use_ocr;
-            useOcr = rawUseOcr === 1 || rawUseOcr === true || rawUseOcr === null || rawUseOcr === undefined;
+            useOcr =
+              rawUseOcr === 1 ||
+              rawUseOcr === true ||
+              rawUseOcr === null ||
+              rawUseOcr === undefined;
           }
         } catch (dbErr: any) {
           // Fallback: use_ocr column might not exist in schema yet — default to enabled
-          console.warn("[BOT] use_ocr column not found or DB error, defaulting useOcr=true:", dbErr.message);
+          console.warn(
+            "[BOT] use_ocr column not found or DB error, defaulting useOcr=true:",
+            dbErr.message,
+          );
           try {
             const [taskFallback]: any = await pool.query(
               "SELECT metric_unit FROM tasks WHERE id = ?",
@@ -1395,7 +1412,9 @@ async function handleEvent(event: any) {
       let result: any = { type: "NOT_FOUND" };
 
       if (lastBotTaskId && !useOcr) {
-        console.log(`[BOT] Task ${lastBotTaskId} has use_ocr = false. Bypassing AI OCR analysis.`);
+        console.log(
+          `[BOT] Task ${lastBotTaskId} has use_ocr = false. Bypassing AI OCR analysis.`,
+        );
         result = {
           type: "PHOTO_PROOF",
           value: 1,
@@ -1421,11 +1440,10 @@ async function handleEvent(event: any) {
 
           const isTanitaTask =
             lastBotTaskId === 0 ||
-            (lastBotTaskId > 0 && (
-              targetUnit === "kg" ||
-              metricType?.toLowerCase().includes("tanita") ||
-              metricType?.toLowerCase().includes("weight")
-            ));
+            (lastBotTaskId > 0 &&
+              (targetUnit === "kg" ||
+                metricType?.toLowerCase().includes("tanita") ||
+                metricType?.toLowerCase().includes("weight")));
 
           if (isTanitaTask) {
             // Path A: analyze-tanita
@@ -1505,7 +1523,12 @@ async function handleEvent(event: any) {
                               type: "box",
                               layout: "horizontal",
                               contents: [
-                                { type: "text", text: "⚠️", size: "xl", flex: 0 },
+                                {
+                                  type: "text",
+                                  text: "⚠️",
+                                  size: "xl",
+                                  flex: 0,
+                                },
                                 {
                                   type: "text",
                                   text: headerText,
@@ -1589,7 +1612,14 @@ async function handleEvent(event: any) {
               const dU = ["km", "m", "miles"];
               const sU = ["steps", "ก้าว"];
               const cU = ["kcal", "calories", "cal"];
-              const tU = ["min", "minute", "minutes", "นาที", "ชั่วโมง", "hour"];
+              const tU = [
+                "min",
+                "minute",
+                "minutes",
+                "นาที",
+                "ชั่วโมง",
+                "hour",
+              ];
               let type = "RUNNING";
               if (sU.includes(targetUnit)) type = "STEPS";
               else if (cU.includes(targetUnit)) type = "CALORIES";

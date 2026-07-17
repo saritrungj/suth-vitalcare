@@ -54,10 +54,10 @@ export function useActivityForm(fetchActivitiesCallback: () => Promise<void>) {
   const unitOptions = ref<Record<string, string[]>>({});
   const roles = ref<{ id: string; name: string; category: string }[]>([]);
   const submissionOptions = ref([
-    { value: "photo", label: "📷 ส่งรูปภาพ (Photo)" },
-    { value: "text", label: "✍️ พิมพ์ข้อความ (Text)" },
-    { value: "both", label: "📷✍️ รูปภาพ + ข้อความ (Both)" },
-    { value: "manual", label: "🔢 กรอกตัวเลข (Manual)" },
+    { value: "photo", label: "ส่งรูปภาพ (Photo)" },
+    { value: "text", label: "พิมพ์ข้อความ (Text)" },
+    { value: "both", label: "รูปภาพ + ข้อความ (Both)" },
+    { value: "manual", label: "กรอกตัวเลข (Manual)" },
   ]);
   const initialForm = (existingDates?: any[]) => ({
     title: "",
@@ -236,38 +236,53 @@ export function useActivityForm(fetchActivitiesCallback: () => Promise<void>) {
   };
   const resetForm = async () => {
     // 🧹 Cleanup orphaned file if user uploaded a new image but then cancelled
-    if (form.value.poster && form.value.poster !== originalPoster.value && form.value.poster.startsWith('/uploads/')) {
-        try {
-            await fetch(`/api/upload`, {
-                method: "DELETE",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ oldUrl: form.value.poster }),
-            });
-            console.log("[cancel] Deleted intermediate activity poster:", form.value.poster);
-        } catch (e) {
-            console.error("Failed to delete intermediate activity poster:", e);
-        }
+    if (
+      form.value.poster &&
+      form.value.poster !== originalPoster.value &&
+      form.value.poster.startsWith("/uploads/")
+    ) {
+      try {
+        await fetch(`/api/upload`, {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ oldUrl: form.value.poster }),
+        });
+        console.log(
+          "[cancel] Deleted intermediate activity poster:",
+          form.value.poster,
+        );
+      } catch (e) {
+        console.error("Failed to delete intermediate activity poster:", e);
+      }
     }
-    
+
     // Also clean up any intermediate section images
     if (form.value.sections && Array.isArray(form.value.sections)) {
-        for (const section of form.value.sections) {
-            if (section.type === 'image' && section.image) {
-                const isOriginal = originalSections.value.some((s: any) => s.type === 'image' && s.image === section.image);
-                if (!isOriginal && section.image.startsWith('/uploads/')) {
-                    try {
-                        await fetch(`/api/upload`, {
-                            method: "DELETE",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ oldUrl: section.image }),
-                        });
-                        console.log("[cancel] Deleted intermediate activity section image:", section.image);
-                    } catch (e) {
-                        console.error("Failed to delete intermediate activity section image:", e);
-                    }
-                }
+      for (const section of form.value.sections) {
+        if (section.type === "image" && section.image) {
+          const isOriginal = originalSections.value.some(
+            (s: any) => s.type === "image" && s.image === section.image,
+          );
+          if (!isOriginal && section.image.startsWith("/uploads/")) {
+            try {
+              await fetch(`/api/upload`, {
+                method: "DELETE",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ oldUrl: section.image }),
+              });
+              console.log(
+                "[cancel] Deleted intermediate activity section image:",
+                section.image,
+              );
+            } catch (e) {
+              console.error(
+                "Failed to delete intermediate activity section image:",
+                e,
+              );
             }
+          }
         }
+      }
     }
 
     editingId.value = null;
@@ -419,7 +434,9 @@ export function useActivityForm(fetchActivitiesCallback: () => Promise<void>) {
         localStorage.removeItem(ACTIVITY_DRAFT_KEY);
         // ✅ Prevent resetForm from deleting the newly uploaded files we just saved
         originalPoster.value = form.value.poster;
-        originalSections.value = form.value.sections ? form.value.sections.map(s => s.image).filter(Boolean) : [];
+        originalSections.value = form.value.sections
+          ? form.value.sections.map((s) => s.image).filter(Boolean)
+          : [];
         resetForm();
         router.replace({
           query: { ...route.query, sub: undefined, id: undefined },
@@ -883,7 +900,9 @@ export function useActivityForm(fetchActivitiesCallback: () => Promise<void>) {
       : [];
     form.value = newFormState;
     originalPoster.value = act.poster || "";
-    originalSections.value = parsedSections.map((s: any) => s.image).filter(Boolean);
+    originalSections.value = parsedSections
+      .map((s: any) => s.image)
+      .filter(Boolean);
     const specificRoleIds = roles.value
       .filter((r) => r.category !== "พื้นฐาน")
       .map((r) => r.id);
@@ -918,7 +937,11 @@ export function useActivityForm(fetchActivitiesCallback: () => Promise<void>) {
     const formData = new FormData();
     formData.append("image", file);
     const params = new URLSearchParams({ type: "activity", name: label });
-    if (oldUrl && oldUrl !== originalPoster.value && !originalSections.value.includes(oldUrl)) {
+    if (
+      oldUrl &&
+      oldUrl !== originalPoster.value &&
+      !originalSections.value.includes(oldUrl)
+    ) {
       params.append("oldUrl", oldUrl);
     }
     console.log("[upload:activity:start]", {

@@ -8,6 +8,7 @@ import {
   TANITA_ENCRYPTED_FIELDS,
 } from "../lib/crypto.js";
 import { getIO, EVENTS } from "../lib/realtime.js";
+import { notifyAllUsers } from "../lib/notifications.js";
 import crypto from "crypto";
 import { z } from "zod";
 import { logAudit } from "../lib/audit.js";
@@ -34,7 +35,10 @@ const parseVisibility = (raw: any): string[] => {
     // Handle over-escaped JSON (e.g. "\"["general"]\"")
     if (typeof vis === "string") {
       vis = vis.trim();
-      if ((vis.startsWith('"') && vis.endsWith('"')) || (vis.startsWith("'") && vis.endsWith("'"))) {
+      if (
+        (vis.startsWith('"') && vis.endsWith('"')) ||
+        (vis.startsWith("'") && vis.endsWith("'"))
+      ) {
         try {
           const inner = JSON.parse(vis);
           if (inner) vis = inner;
@@ -54,10 +58,18 @@ const parseVisibility = (raw: any): string[] => {
           if (Array.isArray(parsed)) return parsed.map(String).filter(Boolean);
         } catch {
           // fallback to manual parse if JSON.parse fails (e.g. malformed JSON)
-          return vis.slice(1, -1).split(",").map(s => s.trim().replace(/^["']|["']$/g, "")).filter(Boolean);
+          return vis
+            .slice(1, -1)
+            .split(",")
+            .map((s) => s.trim().replace(/^["']|["']$/g, ""))
+            .filter(Boolean);
         }
       }
-      if (vis.includes(",")) return vis.split(",").map(s => s.trim()).filter(Boolean);
+      if (vis.includes(","))
+        return vis
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean);
       return vis ? [vis] : ["general"];
     }
 
@@ -190,9 +202,9 @@ router.get("/", async (req, res) => {
             : event.assessment_config,
         creator: creator
           ? {
-            ...creator,
-            fname_th: decrypt(creator.fname_th),
-          }
+              ...creator,
+              fname_th: decrypt(creator.fname_th),
+            }
           : null,
         registration_count: regCountRow ? regCountRow.count : 0,
         tasks: parsedTasks,
@@ -337,13 +349,16 @@ router.get("/batch", async (req, res) => {
     const idsStr = req.query.ids as string;
     if (!idsStr) return res.json([]);
 
-    const ids = idsStr.split(",").map(id => Number(id.trim())).filter(id => !isNaN(id));
+    const ids = idsStr
+      .split(",")
+      .map((id) => Number(id.trim()))
+      .filter((id) => !isNaN(id));
     if (ids.length === 0) return res.json([]);
 
     const placeholders = ids.map(() => "?").join(",");
     const [events]: any = await pool.query(
       `SELECT * FROM events WHERE id IN (${placeholders})`,
-      ids
+      ids,
     );
 
     if (events.length === 0) return res.json([]);
@@ -354,12 +369,12 @@ router.get("/batch", async (req, res) => {
 
     const [creators]: any = await pool.query(
       `SELECT id, fname_th, role, picture_url, team_id FROM users WHERE id IN (SELECT created_by FROM events WHERE id IN (${idPlaceholders}))`,
-      eventIds
+      eventIds,
     );
 
     const [tasks]: any = await pool.query(
       `SELECT * FROM tasks WHERE event_id IN (${idPlaceholders})`,
-      eventIds
+      eventIds,
     );
 
     const transformed = events.map((event: any) => {
@@ -373,7 +388,10 @@ router.get("/batch", async (req, res) => {
           id: t.id,
           enabled: t.is_active !== 0,
           points: t.points,
-          allowed_days: typeof t.allowed_days === "string" ? JSON.parse(t.allowed_days) : t.allowed_days,
+          allowed_days:
+            typeof t.allowed_days === "string"
+              ? JSON.parse(t.allowed_days)
+              : t.allowed_days,
           note: t.note || t.title,
         };
       });
@@ -381,7 +399,9 @@ router.get("/batch", async (req, res) => {
       return {
         ...event,
         visibility: parseVisibility(event.visibility),
-        creator: creator ? { ...creator, fname_th: decrypt(creator.fname_th) } : null,
+        creator: creator
+          ? { ...creator, fname_th: decrypt(creator.fname_th) }
+          : null,
         tasks: eventTasks,
         missions_config,
       };
@@ -478,7 +498,9 @@ router.post("/:id/join", async (req, res) => {
       const visArray = Array.isArray(vis) ? vis : [vis].filter(Boolean);
 
       const baseVis = visArray.filter((v: string) => baseGroups.includes(v));
-      const roleTypeVis = visArray.filter((v: string) => roleTypeGroups.includes(v));
+      const roleTypeVis = visArray.filter((v: string) =>
+        roleTypeGroups.includes(v),
+      );
       const gradeVis = visArray.filter((v: string) => gradeGroups.includes(v));
       const yearVis = visArray.filter((v: string) => yearGroups.includes(v));
       const facultyVis = visArray.filter(
@@ -544,11 +566,19 @@ router.post("/:id/join", async (req, res) => {
           }
 
           const standardFaculties = [
-            "สำนักวิชาวิทยาศาสตร์", "สำนักวิชาเทคโนโลยีสังคม", "สำนักวิชาเทคโนโลยีการเกษตร", 
-            "สำนักวิชาวิศวกรรมศาสตร์", "สำนักวิชาแพทยศาสตร์", "สำนักวิชาพยาบาลศาสตร์", 
-            "สำนักวิชาทันตแพทยศาสตร์", "สำนักวิชาสาธารณสุขศาสตร์", "สำนักวิชาศาสตร์และศิลป์ดิจิทัล"
+            "สำนักวิชาวิทยาศาสตร์",
+            "สำนักวิชาเทคโนโลยีสังคม",
+            "สำนักวิชาเทคโนโลยีการเกษตร",
+            "สำนักวิชาวิศวกรรมศาสตร์",
+            "สำนักวิชาแพทยศาสตร์",
+            "สำนักวิชาพยาบาลศาสตร์",
+            "สำนักวิชาทันตแพทยศาสตร์",
+            "สำนักวิชาสาธารณสุขศาสตร์",
+            "สำนักวิชาศาสตร์และศิลป์ดิจิทัล",
           ];
-          const isOtherFac = !standardFaculties.includes(userFac) && !standardFaculties.includes(detail2);
+          const isOtherFac =
+            !standardFaculties.includes(userFac) &&
+            !standardFaculties.includes(detail2);
 
           const passFac =
             facultyVis.length === 0 ||
@@ -577,11 +607,19 @@ router.post("/:id/join", async (req, res) => {
           u.role_type === "บุคลากรมหาวิทยาลัย"
         ) {
           const standardFaculties = [
-            "สำนักวิชาวิทยาศาสตร์", "สำนักวิชาเทคโนโลยีสังคม", "สำนักวิชาเทคโนโลยีการเกษตร", 
-            "สำนักวิชาวิศวกรรมศาสตร์", "สำนักวิชาแพทยศาสตร์", "สำนักวิชาพยาบาลศาสตร์", 
-            "สำนักวิชาทันตแพทยศาสตร์", "สำนักวิชาสาธารณสุขศาสตร์", "สำนักวิชาศาสตร์และศิลป์ดิจิทัล"
+            "สำนักวิชาวิทยาศาสตร์",
+            "สำนักวิชาเทคโนโลยีสังคม",
+            "สำนักวิชาเทคโนโลยีการเกษตร",
+            "สำนักวิชาวิศวกรรมศาสตร์",
+            "สำนักวิชาแพทยศาสตร์",
+            "สำนักวิชาพยาบาลศาสตร์",
+            "สำนักวิชาทันตแพทยศาสตร์",
+            "สำนักวิชาสาธารณสุขศาสตร์",
+            "สำนักวิชาศาสตร์และศิลป์ดิจิทัล",
           ];
-          const isOtherDept = !standardFaculties.includes(u.role_detail_1) && !standardFaculties.includes(u.role_detail_2);
+          const isOtherDept =
+            !standardFaculties.includes(u.role_detail_1) &&
+            !standardFaculties.includes(u.role_detail_2);
 
           if (
             facultyVis.length > 0 &&
@@ -595,11 +633,13 @@ router.post("/:id/join", async (req, res) => {
             };
           }
         } else {
-          const hasSpecificFilters = gradeVis.length > 0 || yearVis.length > 0 || facultyVis.length > 0;
+          const hasSpecificFilters =
+            gradeVis.length > 0 || yearVis.length > 0 || facultyVis.length > 0;
           if (hasSpecificFilters && !roleTypeVis.includes(u.role_type)) {
             return {
               ok: false,
-              error: "กิจกรรมนี้จำกัดเฉพาะกลุ่มนักเรียน/นักศึกษา หรือหน่วยงานที่กำหนด",
+              error:
+                "กิจกรรมนี้จำกัดเฉพาะกลุ่มนักเรียน/นักศึกษา หรือหน่วยงานที่กำหนด",
             };
           }
         }
@@ -622,10 +662,17 @@ router.post("/:id/join", async (req, res) => {
     }
 
     // 5b. Check Event Password (admin bypass)
-    if (!isAdmin && event.event_password && event.event_password.trim() !== "") {
+    if (
+      !isAdmin &&
+      event.event_password &&
+      event.event_password.trim() !== ""
+    ) {
       if (!eventPassword || eventPassword !== event.event_password) {
         await connection.rollback();
-        return res.status(403).json({ error: "รหัสผ่านกิจกรรมไม่ถูกต้อง", requires_password: true });
+        return res.status(403).json({
+          error: "รหัสผ่านกิจกรรมไม่ถูกต้อง",
+          requires_password: true,
+        });
       }
     }
 
@@ -735,23 +782,39 @@ router.post("/admin/kick", requireAdmin, async (req, res) => {
   const { userId, eventId } = req.body;
   const adminId = req.headers["x-user-id"];
 
-  if (!userId || !eventId) return res.status(400).json({ error: "Missing parameters" });
+  if (!userId || !eventId)
+    return res.status(400).json({ error: "Missing parameters" });
 
   try {
     // 1. Verify admin
-    const [adminRows]: any = await pool.query("SELECT role FROM users WHERE id = ?", [adminId]);
-    if (adminRows[0]?.role !== 'admin') return res.status(403).json({ error: "Unauthorized" });
+    const [adminRows]: any = await pool.query(
+      "SELECT role FROM users WHERE id = ?",
+      [adminId],
+    );
+    if (adminRows[0]?.role !== "admin")
+      return res.status(403).json({ error: "Unauthorized" });
 
     // 2. Remove registration
-    await pool.query("DELETE FROM registrations WHERE user_id = ? AND event_id = ?", [userId, eventId]);
+    await pool.query(
+      "DELETE FROM registrations WHERE user_id = ? AND event_id = ?",
+      [userId, eventId],
+    );
 
     // Also cleanup team memberships if they exist (Try both possible column names for safety)
     try {
-      await pool.query("DELETE FROM team_members WHERE user_id = ? AND team_id IN (SELECT id FROM teams WHERE event_id = ?)", [userId, eventId]);
+      await pool.query(
+        "DELETE FROM team_members WHERE user_id = ? AND team_id IN (SELECT id FROM teams WHERE event_id = ?)",
+        [userId, eventId],
+      );
     } catch (e) {
       try {
-        await pool.query("DELETE FROM team_members WHERE user_id = ? AND team_id IN (SELECT id FROM teams WHERE activity_id = ?)", [userId, eventId]);
-      } catch (e2) { /* Ignore if team cleanup fails due to schema */ }
+        await pool.query(
+          "DELETE FROM team_members WHERE user_id = ? AND team_id IN (SELECT id FROM teams WHERE activity_id = ?)",
+          [userId, eventId],
+        );
+      } catch (e2) {
+        /* Ignore if team cleanup fails due to schema */
+      }
     }
 
     await logAudit({
@@ -759,7 +822,7 @@ router.post("/admin/kick", requireAdmin, async (req, res) => {
       action: "KICK_USER",
       description: `Admin removed user ${userId} from event ${eventId}`,
       targetType: "activity",
-      targetId: Number(eventId)
+      targetId: Number(eventId),
     });
 
     // ✅ Emit realtime event
@@ -777,15 +840,22 @@ router.post("/admin/kick-bulk", requireAdmin, async (req, res) => {
   const adminId = req.headers["x-user-id"];
 
   if (!userId || !eventIds || !Array.isArray(eventIds)) {
-    return res.status(400).json({ error: "Missing parameters or invalid eventIds" });
+    return res
+      .status(400)
+      .json({ error: "Missing parameters or invalid eventIds" });
   }
 
-  if (eventIds.length === 0) return res.json({ message: "No activities to remove" });
+  if (eventIds.length === 0)
+    return res.json({ message: "No activities to remove" });
 
   try {
     // 1. Verify admin
-    const [adminRows]: any = await pool.query("SELECT role FROM users WHERE id = ?", [adminId]);
-    if (adminRows[0]?.role !== 'admin') return res.status(403).json({ error: "Unauthorized" });
+    const [adminRows]: any = await pool.query(
+      "SELECT role FROM users WHERE id = ?",
+      [adminId],
+    );
+    if (adminRows[0]?.role !== "admin")
+      return res.status(403).json({ error: "Unauthorized" });
 
     // 2. Perform bulk removal
     const placeholders = eventIds.map(() => "?").join(",");
@@ -793,23 +863,25 @@ router.post("/admin/kick-bulk", requireAdmin, async (req, res) => {
     // Remove registrations
     await pool.query(
       `DELETE FROM registrations WHERE user_id = ? AND event_id IN (${placeholders})`,
-      [userId, ...eventIds]
+      [userId, ...eventIds],
     );
 
     // Cleanup team memberships for these events
     try {
       await pool.query(
         `DELETE FROM team_members WHERE user_id = ? AND team_id IN (SELECT id FROM teams WHERE event_id IN (${placeholders}))`,
-        [userId, ...eventIds]
+        [userId, ...eventIds],
       );
     } catch (e) {
       // Fallback for activity_id column
       try {
         await pool.query(
           `DELETE FROM team_members WHERE user_id = ? AND team_id IN (SELECT id FROM teams WHERE activity_id IN (${placeholders}))`,
-          [userId, ...eventIds]
+          [userId, ...eventIds],
         );
-      } catch (e2) { /* Ignore schema differences */ }
+      } catch (e2) {
+        /* Ignore schema differences */
+      }
     }
 
     await logAudit({
@@ -817,10 +889,12 @@ router.post("/admin/kick-bulk", requireAdmin, async (req, res) => {
       action: "BULK_KICK_USER",
       description: `Admin removed user ${userId} from ${eventIds.length} events`,
       targetType: "user",
-      targetId: Number(userId)
+      targetId: Number(userId),
     });
 
-    return res.json({ message: `Removed user from ${eventIds.length} activities successfully` });
+    return res.json({
+      message: `Removed user from ${eventIds.length} activities successfully`,
+    });
   } catch (error: any) {
     return res.status(500).json({ error: "Internal Server Error" });
   }
@@ -880,7 +954,9 @@ router.get("/:id", async (req, res) => {
       event_code: undefined, // Hide join code from frontend response
       event_password: undefined, // Hide password from frontend response
       has_event_code: !!(event.event_code && event.event_code.trim() !== ""),
-      has_event_password: !!(event.event_password && event.event_password.trim() !== ""),
+      has_event_password: !!(
+        event.event_password && event.event_password.trim() !== ""
+      ),
       visibility: parseVisibility(event.visibility),
       health_config:
         typeof event.health_config === "string"
@@ -936,14 +1012,19 @@ router.post("/", requireAdmin, async (req, res) => {
        WHERE title = ? AND created_by = ? 
        AND created_at >= NOW() - INTERVAL 10 SECOND 
        ORDER BY created_at DESC LIMIT 1`,
-      [req.body.title, userId]
+      [req.body.title, userId],
     );
 
     if (existing.length > 0) {
       await connection.rollback();
       connection.release();
-      console.log(`[IDEMPOTENCY] Activity creation skipped, returning existing id: ${existing[0].id}`);
-      return res.status(200).json({ id: existing[0].id, message: "Activity already created (Idempotent)" });
+      console.log(
+        `[IDEMPOTENCY] Activity creation skipped, returning existing id: ${existing[0].id}`,
+      );
+      return res.status(200).json({
+        id: existing[0].id,
+        message: "Activity already created (Idempotent)",
+      });
     }
 
     const [userRows]: any = await connection.query(
@@ -955,7 +1036,9 @@ router.post("/", requireAdmin, async (req, res) => {
 
     if (!isAdmin) {
       await connection.rollback();
-      return res.status(403).json({ error: "คุณไม่มีสิทธิ์ในการสร้างกิจกรรม (เฉพาะ Admin เท่านั้น)" });
+      return res.status(403).json({
+        error: "คุณไม่มีสิทธิ์ในการสร้างกิจกรรม (เฉพาะ Admin เท่านั้น)",
+      });
     }
 
     const visibilityStr = JSON.stringify(
@@ -972,29 +1055,29 @@ router.post("/", requireAdmin, async (req, res) => {
       typeof req.body.goal_config === "string"
         ? JSON.parse(req.body.goal_config)
         : req.body.goal_config || {
-          enabled: false,
-          mode: "solo",
-          team_size: 3,
-          target_type: "points",
-          target_value: 0,
-          reward_text: "",
-        },
+            enabled: false,
+            mode: "solo",
+            team_size: 3,
+            target_type: "points",
+            target_value: 0,
+            reward_text: "",
+          },
     );
     const certificate_configStr = JSON.stringify(
       typeof req.body.certificate_config === "string"
         ? JSON.parse(req.body.certificate_config)
         : req.body.certificate_config || {
-          enabled: false,
-          issue_mode: "immediately",
-        },
+            enabled: false,
+            issue_mode: "immediately",
+          },
     );
     const assessment_configStr = JSON.stringify(
       typeof req.body.assessment_config === "string"
         ? JSON.parse(req.body.assessment_config)
         : req.body.assessment_config || {
-          pre_test: { enabled: false, title: "" },
-          post_test: { enabled: false, title: "" },
-        },
+            pre_test: { enabled: false, title: "" },
+            post_test: { enabled: false, title: "" },
+          },
     );
     const detail =
       req.body.detail ||
@@ -1005,14 +1088,15 @@ router.post("/", requireAdmin, async (req, res) => {
     if (teamId && !isAdmin) {
       const [teamRows]: any = await connection.query(
         "SELECT host_id FROM teams WHERE id = ?",
-        [teamId]
+        [teamId],
       );
       if (teamRows[0]?.host_id?.toString() !== userId.toString()) {
         await connection.rollback();
-        return res.status(403).json({ error: "คุณไม่มีสิทธิ์สร้างกิจกรรมให้ทีมนี้ (คุณไม่ใช่เจ้าของทีม)" });
+        return res.status(403).json({
+          error: "คุณไม่มีสิทธิ์สร้างกิจกรรมให้ทีมนี้ (คุณไม่ใช่เจ้าของทีม)",
+        });
       }
     }
-
 
     const [eventResult]: any = await connection.query(
       `INSERT INTO events (title, poster, detail, start_date, end_date, registration_start_date, registration_end_date, is_continuous_registration, is_continuous_event, start_time, end_time, max_slots, is_unlimited_max_slots, type, activity_mode, leaderboard_enabled, team_mode, location_name, organizer, rules_regulations, inclusions, event_code, event_password, visibility, health_config, goal_config, certificate_config, assessment_config, team_id, status, publish_start_date, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -1103,6 +1187,15 @@ router.post("/", requireAdmin, async (req, res) => {
     });
 
     getIO().emit(EVENTS.ACTIVITY_CREATED, finalRows[0]);
+
+    // Persistent new-activity notifications for every active user (best-effort).
+    notifyAllUsers({
+      type: "activity_created",
+      title: "กิจกรรมใหม่",
+      message: `มีกิจกรรมใหม่ "${finalRows[0].title}" เปิดให้เข้าร่วมแล้ว`,
+      linkUrl: `/activities/${newEventId}`,
+      refId: newEventId,
+    });
 
     res.status(201).json(finalRows[0]);
   } catch (error: any) {
@@ -1256,7 +1349,7 @@ router.patch("/:id", requireAdmin, async (req, res) => {
     if (eventRows[0]?.team_id) {
       const [teamRows]: any = await connection.query(
         "SELECT host_id FROM teams WHERE id = ?",
-        [eventRows[0].team_id]
+        [eventRows[0].team_id],
       );
       if (teamRows[0]?.host_id?.toString() === userId.toString()) {
         isTeamHost = true;
@@ -1271,10 +1364,19 @@ router.patch("/:id", requireAdmin, async (req, res) => {
     // --- Cleanup orphaned physical files (poster & sections) ---
     if (req.body.poster !== undefined) {
       const oldPoster = eventRows[0]?.poster;
-      if (oldPoster && oldPoster !== req.body.poster && oldPoster.startsWith("/uploads/")) {
+      if (
+        oldPoster &&
+        oldPoster !== req.body.poster &&
+        oldPoster.startsWith("/uploads/")
+      ) {
         try {
-          const relativeOldPath = oldPoster.substring('/uploads/'.length);
-          const filePath = path.join(process.cwd(), "public", "uploads", ...relativeOldPath.split('/').filter(Boolean));
+          const relativeOldPath = oldPoster.substring("/uploads/".length);
+          const filePath = path.join(
+            process.cwd(),
+            "public",
+            "uploads",
+            ...relativeOldPath.split("/").filter(Boolean),
+          );
           console.log("[PATCH CLEANUP] Deleting poster:", filePath);
           if (fs.existsSync(filePath)) {
             await fs.promises.unlink(filePath);
@@ -1288,24 +1390,41 @@ router.patch("/:id", requireAdmin, async (req, res) => {
     if (req.body.detail !== undefined) {
       try {
         const oldDetail = JSON.parse(eventRows[0]?.detail || "[]");
-        const newDetailStr = typeof req.body.detail === 'string' ? req.body.detail : JSON.stringify(req.body.detail);
+        const newDetailStr =
+          typeof req.body.detail === "string"
+            ? req.body.detail
+            : JSON.stringify(req.body.detail);
         const newDetail = JSON.parse(newDetailStr || "[]");
-        
-        const oldImages = oldDetail.map((s:any)=>s.image).filter((u:any) => u && u.startsWith('/uploads/'));
-        const newImages = newDetail.map((s:any)=>s.image).filter((u:any) => u && u.startsWith('/uploads/'));
-        
-        const imagesToDelete = oldImages.filter((img:string) => !newImages.includes(img));
+
+        const oldImages = oldDetail
+          .map((s: any) => s.image)
+          .filter((u: any) => u && u.startsWith("/uploads/"));
+        const newImages = newDetail
+          .map((s: any) => s.image)
+          .filter((u: any) => u && u.startsWith("/uploads/"));
+
+        const imagesToDelete = oldImages.filter(
+          (img: string) => !newImages.includes(img),
+        );
         for (const img of imagesToDelete) {
-           try {
-             const relativeOldPath = img.substring('/uploads/'.length);
-             const filePath = path.join(process.cwd(), "public", "uploads", ...relativeOldPath.split('/').filter(Boolean));
-             if (fs.existsSync(filePath)) {
-               await fs.promises.unlink(filePath);
-               console.log("[PATCH CLEANUP] Detail image deleted:", filePath);
-             }
-           } catch (err: any) {
-             console.error("[PATCH CLEANUP] Detail image delete failed:", err.message);
-           }
+          try {
+            const relativeOldPath = img.substring("/uploads/".length);
+            const filePath = path.join(
+              process.cwd(),
+              "public",
+              "uploads",
+              ...relativeOldPath.split("/").filter(Boolean),
+            );
+            if (fs.existsSync(filePath)) {
+              await fs.promises.unlink(filePath);
+              console.log("[PATCH CLEANUP] Detail image deleted:", filePath);
+            }
+          } catch (err: any) {
+            console.error(
+              "[PATCH CLEANUP] Detail image delete failed:",
+              err.message,
+            );
+          }
         }
       } catch (e) {}
     }
@@ -1338,7 +1457,14 @@ router.patch("/:id", requireAdmin, async (req, res) => {
     setField("title", req.body.title);
     setField("status", req.body.status);
     setField("poster", req.body.poster);
-    setField("detail", req.body.detail !== undefined ? (typeof req.body.detail === 'string' ? req.body.detail : JSON.stringify(req.body.detail)) : undefined);
+    setField(
+      "detail",
+      req.body.detail !== undefined
+        ? typeof req.body.detail === "string"
+          ? req.body.detail
+          : JSON.stringify(req.body.detail)
+        : undefined,
+    );
     setField("start_date", req.body.start_date);
     setField("end_date", req.body.end_date);
     setField(
@@ -1391,7 +1517,10 @@ router.patch("/:id", requireAdmin, async (req, res) => {
       setField("goal_config", smartStringify(req.body.goal_config));
     }
     if (req.body.certificate_config !== undefined) {
-      setField("certificate_config", smartStringify(req.body.certificate_config));
+      setField(
+        "certificate_config",
+        smartStringify(req.body.certificate_config),
+      );
     }
     if (req.body.assessment_config !== undefined) {
       setField("assessment_config", smartStringify(req.body.assessment_config));
@@ -1492,7 +1621,7 @@ router.patch("/:id", requireAdmin, async (req, res) => {
       message: error?.message,
       code: error?.code,
       sql: error?.sql,
-      stack: error?.stack?.split('\n').slice(0, 6),
+      stack: error?.stack?.split("\n").slice(0, 6),
     });
     res.status(400).json({ error: error?.message || "Bad Request" });
   } finally {
@@ -1547,7 +1676,7 @@ router.delete("/:id", async (req, res) => {
     if (eventRows[0]?.team_id) {
       const [teamRows]: any = await pool.query(
         "SELECT host_id FROM teams WHERE id = ?",
-        [eventRows[0].team_id]
+        [eventRows[0].team_id],
       );
       if (teamRows[0]?.host_id?.toString() === userId.toString()) {
         isTeamHost = true;
@@ -1562,23 +1691,39 @@ router.delete("/:id", async (req, res) => {
       try {
         const { poster, detail } = eventRows[0];
         // Delete poster
-        if (poster && poster.startsWith('/uploads/')) {
-          const relativeOldPath = poster.substring('/uploads/'.length);
-          const filePath = path.join(process.cwd(), "public", "uploads", ...relativeOldPath.split('/').filter(Boolean));
+        if (poster && poster.startsWith("/uploads/")) {
+          const relativeOldPath = poster.substring("/uploads/".length);
+          const filePath = path.join(
+            process.cwd(),
+            "public",
+            "uploads",
+            ...relativeOldPath.split("/").filter(Boolean),
+          );
           if (fs.existsSync(filePath)) await fs.promises.unlink(filePath);
         }
         // Delete detail images
         if (detail) {
-          const parsedDetail = typeof detail === 'string' ? JSON.parse(detail || "[]") : detail;
-          const images = parsedDetail.map((s:any)=>s.image).filter((u:any) => u && u.startsWith('/uploads/'));
+          const parsedDetail =
+            typeof detail === "string" ? JSON.parse(detail || "[]") : detail;
+          const images = parsedDetail
+            .map((s: any) => s.image)
+            .filter((u: any) => u && u.startsWith("/uploads/"));
           for (const img of images) {
-            const relativeOldPath = img.substring('/uploads/'.length);
-            const filePath = path.join(process.cwd(), "public", "uploads", ...relativeOldPath.split('/').filter(Boolean));
+            const relativeOldPath = img.substring("/uploads/".length);
+            const filePath = path.join(
+              process.cwd(),
+              "public",
+              "uploads",
+              ...relativeOldPath.split("/").filter(Boolean),
+            );
             if (fs.existsSync(filePath)) await fs.promises.unlink(filePath);
           }
         }
       } catch (err: any) {
-        console.error("[activity delete] Failed to cleanup physical files:", err.message);
+        console.error(
+          "[activity delete] Failed to cleanup physical files:",
+          err.message,
+        );
       }
     }
 
@@ -1691,8 +1836,6 @@ router.post("/:id/leave", async (req, res) => {
     connection.release();
   }
 });
-
-
 
 router.get("/:id/participants", async (req, res) => {
   const userId = req.headers["x-user-id"];
@@ -1910,7 +2053,7 @@ router.get("/:id/assessment-part-stats", async (req, res) => {
        WHERE asub.event_id = ?
        GROUP BY aa.health_assessment_id, asub.test_type
        ORDER BY aa.health_assessment_id`,
-      [id]
+      [id],
     );
 
     // Also get question-level breakdown for specific health assessments
@@ -1928,7 +2071,7 @@ router.get("/:id/assessment-part-stats", async (req, res) => {
        WHERE asub.event_id = ?
        GROUP BY aa.health_assessment_id, aa.question_text, asub.test_type
        ORDER BY aa.health_assessment_id, avg_score ASC`,
-      [id]
+      [id],
     );
 
     res.json({ partStats: rows, questionStats: questionRows });
@@ -1937,7 +2080,6 @@ router.get("/:id/assessment-part-stats", async (req, res) => {
     res.status(500).json({ error: "Internal Server Error" });
   }
 });
-
 
 router.get("/:id/assessments", async (req, res) => {
   const userId = req.headers["x-user-id"];
@@ -2004,16 +2146,20 @@ router.get("/:id/tanita-changes", async (req, res) => {
     const { id } = req.params;
 
     // Verify role
-    const [userRows]: any = await pool.query("SELECT role FROM users WHERE id = ?", [userId]);
+    const [userRows]: any = await pool.query(
+      "SELECT role FROM users WHERE id = ?",
+      [userId],
+    );
     const userRole = userRows[0]?.role;
-    if (userRole !== "admin" && userRole !== "host") return res.status(403).json({ error: "Forbidden" });
+    if (userRole !== "admin" && userRole !== "host")
+      return res.status(403).json({ error: "Forbidden" });
 
     const [registrants]: any = await pool.query(
       `SELECT u.id, u.fname_th, u.lname_th, u.picture_url, u.nickname, u.gender 
        FROM registrations r 
        JOIN users u ON r.user_id = u.id 
        WHERE r.event_id = ?`,
-      [id]
+      [id],
     );
 
     if (registrants.length === 0) return res.json([]);
@@ -2021,19 +2167,27 @@ router.get("/:id/tanita-changes", async (req, res) => {
 
     const [tanitaRecords]: any = await pool.query(
       `SELECT * FROM tanita WHERE user_id IN (?) AND event_id = ? ORDER BY recorded_at ASC`,
-      [userIds, id]
+      [userIds, id],
     );
 
     const userMap = new Map();
     registrants.forEach((r: any) => {
-      let fname = r.fname_th || '';
-      let lname = r.lname_th || '';
-      let nickname = r.nickname || '';
-      let gender = r.gender || '';
-      try { fname = decrypt(fname); } catch { }
-      try { lname = decrypt(lname); } catch { }
-      try { nickname = decrypt(nickname); } catch { }
-      try { gender = decrypt(gender); } catch { }
+      let fname = r.fname_th || "";
+      let lname = r.lname_th || "";
+      let nickname = r.nickname || "";
+      let gender = r.gender || "";
+      try {
+        fname = decrypt(fname);
+      } catch {}
+      try {
+        lname = decrypt(lname);
+      } catch {}
+      try {
+        nickname = decrypt(nickname);
+      } catch {}
+      try {
+        gender = decrypt(gender);
+      } catch {}
 
       userMap.set(r.id, {
         user_id: r.id,
@@ -2043,7 +2197,7 @@ router.get("/:id/tanita-changes", async (req, res) => {
         picture_url: r.picture_url,
         gender: gender,
         first: null,
-        latest: null
+        latest: null,
       });
     });
 
@@ -2056,7 +2210,9 @@ router.get("/:id/tanita-changes", async (req, res) => {
     });
 
     // Only return users who have at least 2 different records to show "changes"
-    const result = Array.from(userMap.values()).filter(u => u.first && u.latest && u.first.id !== u.latest.id);
+    const result = Array.from(userMap.values()).filter(
+      (u) => u.first && u.latest && u.first.id !== u.latest.id,
+    );
     res.json(result);
   } catch (error: any) {
     res.status(500).json({ error: "Internal Server Error" });
@@ -2072,9 +2228,13 @@ router.get("/:id/assessment-comparison", async (req, res) => {
     const { id } = req.params;
 
     // Verify role
-    const [userRows]: any = await pool.query("SELECT role FROM users WHERE id = ?", [userId]);
+    const [userRows]: any = await pool.query(
+      "SELECT role FROM users WHERE id = ?",
+      [userId],
+    );
     const userRole = userRows[0]?.role;
-    if (userRole !== "admin" && userRole !== "host") return res.status(403).json({ error: "Forbidden" });
+    if (userRole !== "admin" && userRole !== "host")
+      return res.status(403).json({ error: "Forbidden" });
 
     const [rows]: any = await pool.query(
       `SELECT 
@@ -2085,18 +2245,24 @@ router.get("/:id/assessment-comparison", async (req, res) => {
        LEFT JOIN teams t ON u.team_id = t.id
        WHERE asub.event_id = ?
        ORDER BY asub.submitted_at ASC`,
-      [id]
+      [id],
     );
 
     const userMap = new Map();
     rows.forEach((r: any) => {
       if (!userMap.has(r.user_id)) {
-        let fname = r.fname_th || '';
-        let lname = r.lname_th || '';
-        let nickname = r.nickname || '';
-        try { fname = decrypt(fname); } catch { }
-        try { lname = decrypt(lname); } catch { }
-        try { nickname = decrypt(nickname); } catch { }
+        let fname = r.fname_th || "";
+        let lname = r.lname_th || "";
+        let nickname = r.nickname || "";
+        try {
+          fname = decrypt(fname);
+        } catch {}
+        try {
+          lname = decrypt(lname);
+        } catch {}
+        try {
+          nickname = decrypt(nickname);
+        } catch {}
 
         userMap.set(r.user_id, {
           user_id: r.user_id,
@@ -2108,26 +2274,27 @@ router.get("/:id/assessment-comparison", async (req, res) => {
           pre_score: null,
           post_score: null,
           pre_date: null,
-          post_date: null
+          post_date: null,
         });
       }
       const u = userMap.get(r.user_id);
-      if (r.test_type === 'pre_test') {
+      if (r.test_type === "pre_test") {
         u.pre_score = r.total_score;
         u.pre_date = r.submitted_at;
-      } else if (r.test_type === 'post_test') {
+      } else if (r.test_type === "post_test") {
         u.post_score = r.total_score;
         u.post_date = r.submitted_at;
       }
     });
 
-    const result = Array.from(userMap.values()).filter(u => u.pre_score !== null || u.post_score !== null);
+    const result = Array.from(userMap.values()).filter(
+      (u) => u.pre_score !== null || u.post_score !== null,
+    );
     res.json(result);
   } catch (error: any) {
     res.status(500).json({ error: "Internal Server Error" });
   }
 });
-
 
 // --- Bonus Points System --------------------------------------------------
 // Auto-create bonus_points table on startup (delayed to avoid race condition)
@@ -2148,15 +2315,18 @@ setTimeout(() => {
         )
       `);
       console.log("[bonus_points] table ensured.");
-    } catch (e: any) { console.error('[bonus_points] table ensure error:', e.message); }
+    } catch (e: any) {
+      console.error("[bonus_points] table ensure error:", e.message);
+    }
   })();
 }, 7000);
 
 // GET /api/activities/:id/bonus-points
-router.get('/:id/bonus-points', requireAdminOrHost, async (req, res) => {
+router.get("/:id/bonus-points", requireAdminOrHost, async (req, res) => {
   const { id } = req.params;
   try {
-    const [rows]: any = await pool.query(`
+    const [rows]: any = await pool.query(
+      `
       SELECT bp.id, bp.event_id, bp.user_id, bp.points, bp.reason, bp.given_by, bp.created_at,
              u.fname_th, u.lname_th, u.nickname, u.picture_url,
              g.fname_th as given_by_name
@@ -2165,55 +2335,124 @@ router.get('/:id/bonus-points', requireAdminOrHost, async (req, res) => {
       LEFT JOIN users g ON bp.given_by = g.id
       WHERE bp.event_id = ?
       ORDER BY bp.created_at DESC
-    `, [id]);
+    `,
+      [id],
+    );
     const decrypted = rows.map((r: any) => ({
       ...r,
-      fname_th: (() => { try { return decrypt(r.fname_th) || r.fname_th; } catch { return r.fname_th; } })(),
-      lname_th: (() => { try { return decrypt(r.lname_th) || r.lname_th; } catch { return r.lname_th; } })(),
-      nickname: (() => { try { return decrypt(r.nickname) || r.nickname; } catch { return r.nickname; } })(),
-      given_by_name: (() => { try { return decrypt(r.given_by_name) || r.given_by_name; } catch { return r.given_by_name; } })(),
+      fname_th: (() => {
+        try {
+          return decrypt(r.fname_th) || r.fname_th;
+        } catch {
+          return r.fname_th;
+        }
+      })(),
+      lname_th: (() => {
+        try {
+          return decrypt(r.lname_th) || r.lname_th;
+        } catch {
+          return r.lname_th;
+        }
+      })(),
+      nickname: (() => {
+        try {
+          return decrypt(r.nickname) || r.nickname;
+        } catch {
+          return r.nickname;
+        }
+      })(),
+      given_by_name: (() => {
+        try {
+          return decrypt(r.given_by_name) || r.given_by_name;
+        } catch {
+          return r.given_by_name;
+        }
+      })(),
     }));
     res.json(decrypted);
-  } catch (error: any) { res.status(500).json({ error: "Internal Server Error" }); }
+  } catch (error: any) {
+    res.status(500).json({ error: "Internal Server Error" });
+  }
 });
 
 // POST /api/activities/:id/bonus-points
-router.post('/:id/bonus-points', requireAdminOrHost, async (req, res) => {
+router.post("/:id/bonus-points", requireAdminOrHost, async (req, res) => {
   const { id } = req.params;
-  const adminId = req.headers['x-user-id'];
+  const adminId = req.headers["x-user-id"];
   const { user_id, points, reason } = req.body;
-  if (!user_id || points === undefined || points === null) return res.status(400).json({ error: 'Missing user_id or points' });
+  if (!user_id || points === undefined || points === null)
+    return res.status(400).json({ error: "Missing user_id or points" });
   const pts = Number(points);
-  if (isNaN(pts) || pts === 0) return res.status(400).json({ error: '???????????????????????????? 0' });
+  if (isNaN(pts) || pts === 0)
+    return res.status(400).json({ error: "???????????????????????????? 0" });
   try {
-    const [regRows]: any = await pool.query('SELECT id FROM registrations WHERE user_id = ? AND event_id = ? LIMIT 1', [user_id, id]);
-    if (regRows.length === 0) return res.status(404).json({ error: '????????????????????????????????????' });
+    const [regRows]: any = await pool.query(
+      "SELECT id FROM registrations WHERE user_id = ? AND event_id = ? LIMIT 1",
+      [user_id, id],
+    );
+    if (regRows.length === 0)
+      return res
+        .status(404)
+        .json({ error: "????????????????????????????????????" });
     const [result]: any = await pool.query(
-      'INSERT INTO bonus_points (event_id, user_id, points, reason, given_by) VALUES (?, ?, ?, ?, ?)',
-      [id, user_id, pts, reason || null, adminId]
+      "INSERT INTO bonus_points (event_id, user_id, points, reason, given_by) VALUES (?, ?, ?, ?, ?)",
+      [id, user_id, pts, reason || null, adminId],
     );
     if (pts > 0) {
-      await pool.query('UPDATE users SET points = points + ?, total_score = total_score + ? WHERE id = ?', [pts, pts, user_id]);
+      await pool.query(
+        "UPDATE users SET points = points + ?, total_score = total_score + ? WHERE id = ?",
+        [pts, pts, user_id],
+      );
     } else {
-      await pool.query('UPDATE users SET points = GREATEST(0, points + ?), total_score = GREATEST(0, total_score + ?) WHERE id = ?', [pts, pts, user_id]);
+      await pool.query(
+        "UPDATE users SET points = GREATEST(0, points + ?), total_score = GREATEST(0, total_score + ?) WHERE id = ?",
+        [pts, pts, user_id],
+      );
     }
-    await logAudit({ userId: Number(adminId), action: 'ADD_BONUS_POINTS', description: `Admin added ${pts} bonus pts to user ${user_id} in event ${id}. Reason: ${reason || '-'}`, targetType: 'activity', targetId: Number(id) });
-    res.status(201).json({ id: result.insertId, message: '????????????????' });
-  } catch (error: any) { res.status(500).json({ error: "Internal Server Error" }); }
+    await logAudit({
+      userId: Number(adminId),
+      action: "ADD_BONUS_POINTS",
+      description: `Admin added ${pts} bonus pts to user ${user_id} in event ${id}. Reason: ${reason || "-"}`,
+      targetType: "activity",
+      targetId: Number(id),
+    });
+    res.status(201).json({ id: result.insertId, message: "????????????????" });
+  } catch (error: any) {
+    res.status(500).json({ error: "Internal Server Error" });
+  }
 });
 
 // DELETE /api/activities/:id/bonus-points/:bonusId
-router.delete('/:id/bonus-points/:bonusId', requireAdminOrHost, async (req, res) => {
-  const { id, bonusId } = req.params;
-  const adminId = req.headers['x-user-id'];
-  try {
-    const [rows]: any = await pool.query('SELECT id, user_id, points FROM bonus_points WHERE id = ? AND event_id = ? LIMIT 1', [bonusId, id]);
-    if (rows.length === 0) return res.status(404).json({ error: '????????????????' });
-    const { user_id, points } = rows[0];
-    await pool.query('DELETE FROM bonus_points WHERE id = ?', [bonusId]);
-    await pool.query('UPDATE users SET points = GREATEST(0, points - ?), total_score = GREATEST(0, total_score - ?) WHERE id = ?', [Number(points), Number(points), user_id]);
-    await logAudit({ userId: Number(adminId), action: 'DELETE_BONUS_POINTS', description: `Admin removed bonus ${bonusId} (${points} pts) from user ${user_id} in event ${id}`, targetType: 'activity', targetId: Number(id) });
-    res.json({ message: '?????????????' });
-  } catch (error: any) { res.status(500).json({ error: "Internal Server Error" }); }
-});
+router.delete(
+  "/:id/bonus-points/:bonusId",
+  requireAdminOrHost,
+  async (req, res) => {
+    const { id, bonusId } = req.params;
+    const adminId = req.headers["x-user-id"];
+    try {
+      const [rows]: any = await pool.query(
+        "SELECT id, user_id, points FROM bonus_points WHERE id = ? AND event_id = ? LIMIT 1",
+        [bonusId, id],
+      );
+      if (rows.length === 0)
+        return res.status(404).json({ error: "????????????????" });
+      const { user_id, points } = rows[0];
+      await pool.query("DELETE FROM bonus_points WHERE id = ?", [bonusId]);
+      await pool.query(
+        "UPDATE users SET points = GREATEST(0, points - ?), total_score = GREATEST(0, total_score - ?) WHERE id = ?",
+        [Number(points), Number(points), user_id],
+      );
+      await logAudit({
+        userId: Number(adminId),
+        action: "DELETE_BONUS_POINTS",
+        description: `Admin removed bonus ${bonusId} (${points} pts) from user ${user_id} in event ${id}`,
+        targetType: "activity",
+        targetId: Number(id),
+      });
+      res.json({ message: "?????????????" });
+    } catch (error: any) {
+      res.status(500).json({ error: "Internal Server Error" });
+    }
+  },
+);
 export default router;

@@ -39,9 +39,11 @@ router.get("/", async (req, res) => {
     // Delete empty teams from DB
     if (emptyTeamIds.length > 0) {
       console.log(`[Cleanup] Deleting empty teams: ${emptyTeamIds.join(", ")}`);
-      await connection.query("DELETE FROM teams WHERE id IN (?)", [emptyTeamIds]);
+      await connection.query("DELETE FROM teams WHERE id IN (?)", [
+        emptyTeamIds,
+      ]);
       await connection.commit();
-      
+
       // Emit realtime events for deleted teams
       for (const id of emptyTeamIds) {
         getIO().emit(EVENTS.TEAM_DELETED, { id });
@@ -88,7 +90,7 @@ router.post("/", async (req, res) => {
     isPrivate,
     password,
     hostId,
-    code: customCode
+    code: customCode,
   } = req.body;
   let code = (customCode || "").trim().toUpperCase();
 
@@ -105,10 +107,15 @@ router.post("/", async (req, res) => {
     await connection.beginTransaction();
 
     // Check if name already exists
-    const [existingName]: any = await connection.query("SELECT id FROM teams WHERE name = ?", [name]);
+    const [existingName]: any = await connection.query(
+      "SELECT id FROM teams WHERE name = ?",
+      [name],
+    );
     if (existingName.length > 0) {
       await connection.rollback();
-      return res.status(400).json({ error: "ชื่อทีมนี้ถูกใช้แล้ว กรุณาตั้งชื่อใหม่" });
+      return res
+        .status(400)
+        .json({ error: "ชื่อทีมนี้ถูกใช้แล้ว กรุณาตั้งชื่อใหม่" });
     }
 
     const [result]: any = await connection.query(
@@ -135,7 +142,11 @@ router.post("/", async (req, res) => {
 
     // ✅ Emit realtime events
     getIO().emit(EVENTS.TEAM_CREATED, { id: newTeamId, hostId });
-    getIO().emit(EVENTS.USER_UPDATED, { id: hostId, team_id: newTeamId, role: newRole });
+    getIO().emit(EVENTS.USER_UPDATED, {
+      id: hostId,
+      team_id: newTeamId,
+      role: newRole,
+    });
 
     res.json({ success: true, teamId: newTeamId });
   } catch (error: any) {
@@ -249,17 +260,20 @@ router.post("/leave", async (req, res) => {
     if (oldTeamId) {
       const [teamRows]: any = await connection.query(
         "SELECT host_id FROM teams WHERE id = ?",
-        [oldTeamId]
+        [oldTeamId],
       );
 
-      if (teamRows.length > 0 && String(teamRows[0].host_id) === String(userId)) {
+      if (
+        teamRows.length > 0 &&
+        String(teamRows[0].host_id) === String(userId)
+      ) {
         await connection.query(
           "UPDATE users SET team_id = NULL, role = IF(role = 'host', 'user', role) WHERE team_id = ? AND role != 'admin'",
-          [oldTeamId]
+          [oldTeamId],
         );
         await connection.query(
           "UPDATE users SET team_id = NULL WHERE team_id = ? AND role = 'admin'",
-          [oldTeamId]
+          [oldTeamId],
         );
         await connection.query("DELETE FROM teams WHERE id = ?", [oldTeamId]);
         await logAudit({
@@ -272,18 +286,20 @@ router.post("/leave", async (req, res) => {
       } else {
         await connection.query(
           "UPDATE users SET team_id = NULL, role = IF(role = 'host', 'user', role) WHERE id = ?",
-          [userId]
+          [userId],
         );
 
         // Check if team became empty (rare but possible if host is missing)
         const [memberCountRows]: any = await connection.query(
           "SELECT COUNT(*) as count FROM users WHERE team_id = ?",
-          [oldTeamId]
+          [oldTeamId],
         );
         const memberCount = memberCountRows[0].count || 0;
 
         if (memberCount === 0) {
-          console.log(`[Cleanup] Deleting empty team ${oldTeamId} after member left.`);
+          console.log(
+            `[Cleanup] Deleting empty team ${oldTeamId} after member left.`,
+          );
           await connection.query("DELETE FROM teams WHERE id = ?", [oldTeamId]);
           getIO().emit(EVENTS.TEAM_DELETED, { id: oldTeamId });
         }
@@ -316,7 +332,10 @@ router.post("/kick", async (req, res) => {
     await connection.beginTransaction();
 
     const currentUserId = req.headers["x-user-id"];
-    const [userRows]: any = await connection.query("SELECT role FROM users WHERE id = ?", [currentUserId]);
+    const [userRows]: any = await connection.query(
+      "SELECT role FROM users WHERE id = ?",
+      [currentUserId],
+    );
     const isSystemAdmin = userRows[0]?.role === "admin";
 
     const [teamRows]: any = await connection.query(
@@ -324,7 +343,9 @@ router.post("/kick", async (req, res) => {
       [teamId],
     );
 
-    const isTeamHost = teamRows.length > 0 && String(teamRows[0].host_id) === String(currentUserId);
+    const isTeamHost =
+      teamRows.length > 0 &&
+      String(teamRows[0].host_id) === String(currentUserId);
 
     if (!isSystemAdmin && !isTeamHost) {
       await connection.rollback();
@@ -347,7 +368,7 @@ router.post("/kick", async (req, res) => {
     // Check if team is empty after kick
     const [memberCountRows]: any = await connection.query(
       "SELECT COUNT(*) as count FROM users WHERE team_id = ?",
-      [teamId]
+      [teamId],
     );
     const memberCount = memberCountRows[0].count || 0;
 
@@ -390,13 +411,21 @@ router.put("/:id", async (req, res) => {
   try {
     await connection.beginTransaction();
 
-    const [existingName]: any = await connection.query("SELECT id FROM teams WHERE name = ? AND id != ?", [name, id]);
+    const [existingName]: any = await connection.query(
+      "SELECT id FROM teams WHERE name = ? AND id != ?",
+      [name, id],
+    );
     if (existingName.length > 0) {
       await connection.rollback();
-      return res.status(400).json({ error: "ชื่อทีมนี้ถูกใช้แล้ว กรุณาตั้งชื่อใหม่" });
+      return res
+        .status(400)
+        .json({ error: "ชื่อทีมนี้ถูกใช้แล้ว กรุณาตั้งชื่อใหม่" });
     }
 
-    const [uRows]: any = await connection.query("SELECT role FROM users WHERE id = ?", [currentUserId]);
+    const [uRows]: any = await connection.query(
+      "SELECT role FROM users WHERE id = ?",
+      [currentUserId],
+    );
     const isSystemAdmin = uRows[0]?.role === "admin";
 
     const [teamRows]: any = await connection.query(
@@ -404,7 +433,9 @@ router.put("/:id", async (req, res) => {
       [id],
     );
 
-    const isTeamHost = teamRows.length > 0 && String(teamRows[0].host_id) === String(currentUserId);
+    const isTeamHost =
+      teamRows.length > 0 &&
+      String(teamRows[0].host_id) === String(currentUserId);
 
     if (teamRows.length === 0) {
       await connection.rollback();
@@ -433,11 +464,11 @@ router.put("/:id", async (req, res) => {
     if (String(currentHostId) !== String(hostId)) {
       await connection.query(
         "UPDATE users SET role = 'user' WHERE id = ? AND role = 'host'",
-        [currentHostId]
+        [currentHostId],
       );
       await connection.query(
         "UPDATE users SET role = 'host' WHERE id = ? AND role = 'user'",
-        [hostId]
+        [hostId],
       );
     }
 
@@ -463,8 +494,12 @@ router.put("/:id", async (req, res) => {
 router.get("/:id", async (req, res) => {
   try {
     const teamId = Number(req.params.id);
-    const [teamRows]: any = await pool.query("SELECT * FROM teams WHERE id = ?", [teamId]);
-    if (teamRows.length === 0) return res.status(404).json({ error: "Team not found" });
+    const [teamRows]: any = await pool.query(
+      "SELECT * FROM teams WHERE id = ?",
+      [teamId],
+    );
+    if (teamRows.length === 0)
+      return res.status(404).json({ error: "Team not found" });
     const team = teamRows[0];
 
     const [members]: any = await pool.query(
@@ -500,14 +535,20 @@ router.delete("/:id", async (req, res) => {
   try {
     await connection.beginTransaction();
 
-    const [teamRows]: any = await connection.query("SELECT host_id, name FROM teams WHERE id = ?", [id]);
+    const [teamRows]: any = await connection.query(
+      "SELECT host_id, name FROM teams WHERE id = ?",
+      [id],
+    );
     if (teamRows.length === 0) {
       await connection.rollback();
       return res.status(404).json({ error: "ไม่พบทีมที่ต้องการลบ" });
     }
 
     const team = teamRows[0];
-    const [uRows]: any = await connection.query("SELECT role FROM users WHERE id = ?", [currentUserId]);
+    const [uRows]: any = await connection.query(
+      "SELECT role FROM users WHERE id = ?",
+      [currentUserId],
+    );
     const isAdmin = uRows[0]?.role === "admin";
     const isHost = String(team.host_id) === String(currentUserId);
 
@@ -516,8 +557,14 @@ router.delete("/:id", async (req, res) => {
       return res.status(403).json({ error: "ไม่มีสิทธิ์ในการลบทีมนี้" });
     }
 
-    await connection.query("UPDATE users SET team_id = NULL, role = IF(role = 'host', 'user', role) WHERE team_id = ? AND role != 'admin'", [id]);
-    await connection.query("UPDATE users SET team_id = NULL WHERE team_id = ? AND role = 'admin'", [id]);
+    await connection.query(
+      "UPDATE users SET team_id = NULL, role = IF(role = 'host', 'user', role) WHERE team_id = ? AND role != 'admin'",
+      [id],
+    );
+    await connection.query(
+      "UPDATE users SET team_id = NULL WHERE team_id = ? AND role = 'admin'",
+      [id],
+    );
     await connection.query("DELETE FROM teams WHERE id = ?", [id]);
 
     await logAudit({

@@ -1162,12 +1162,14 @@ export function useAdminOverview() {
 
       if (resSummary.ok) {
         const json = await resSummary.json();
-        
-        const finishedCount = (json.activityBreakdown || []).filter((a: any) => {
-          if (a.is_continuous_event) return false;
-          if (!a.end_date) return false;
-          return new Date(a.end_date) < new Date();
-        }).length;
+
+        const finishedCount = (json.activityBreakdown || []).filter(
+          (a: any) => {
+            if (a.is_continuous_event) return false;
+            if (!a.end_date) return false;
+            return new Date(a.end_date) < new Date();
+          },
+        ).length;
 
         const draftCount = (json.activityBreakdown || []).filter((a: any) => {
           return (a.status || "").toLowerCase() === "draft";
@@ -1183,7 +1185,7 @@ export function useAdminOverview() {
                   label: "กิจกรรมที่สิ้นสุด",
                   value: finishedCount,
                   icon: "CheckCircle2",
-                  badge: "สรุปผล"
+                  badge: "สรุปผล",
                 };
               }
               return {
@@ -1511,8 +1513,7 @@ export function useAdminOverview() {
 
   function buildAllCharts() {
     if (!Chart || activeTab.value !== "overview") return;
-    Chart.defaults.font.family =
-      "'Sarabun', 'Noto Sans Thai', 'Inter', sans-serif";
+    Chart.defaults.font.family = "'Sarabun', sans-serif";
     Chart.defaults.color = "#64748b";
     Chart.defaults.scale.grid.color = "#f1f5f9";
 
@@ -1618,7 +1619,7 @@ export function useAdminOverview() {
               border: { display: false },
               ticks: { font: { size: 11 } },
               afterFit: function (scaleInstance: any) {
-                scaleInstance.width = 160; 
+                scaleInstance.width = 160;
               },
             },
           },
@@ -1706,10 +1707,10 @@ export function useAdminOverview() {
               font: { size: 11 },
               padding: 10,
               precision: 0,
-              maxRotation: 0, 
+              maxRotation: 0,
               minRotation: 0,
-              autoSkip: true, 
-              maxTicksLimit: 8, 
+              autoSkip: true,
+              maxTicksLimit: 8,
             },
           },
           y: {
@@ -1828,11 +1829,11 @@ export function useAdminOverview() {
             grid: { color: "#f1f5f9", borderDash: [4, 4] },
             border: { display: false },
             beginAtZero: true,
-            ticks: { 
-              font: { size: 11 }, 
+            ticks: {
+              font: { size: 11 },
               padding: 10,
               precision: 0, // บังคับไม่ให้แสดงทศนิยม
-              stepSize: 1   // เพิ่มสเกลขึ้นทีละ 1
+              stepSize: 1, // เพิ่มสเกลขึ้นทีละ 1
             },
           },
         },
@@ -2194,10 +2195,10 @@ export function useAdminOverview() {
             ticks: {
               padding: 10,
               precision: 0,
-              maxRotation: 0, 
+              maxRotation: 0,
               minRotation: 0,
-              autoSkip: true, 
-              maxTicksLimit: 8, 
+              autoSkip: true,
+              maxTicksLimit: 8,
             },
           },
           y: {

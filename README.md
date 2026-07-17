@@ -7,6 +7,7 @@
 ## 🎯 โปรเจกต์นี้ทำอะไรได้บ้าง? (Key Features)
 
 ### 👤 สำหรับผู้ใช้งาน (ผ่านหน้า LINE LIFF)
+
 - **Activity & Health Tracking:** ผู้ใช้สามารถบันทึกข้อมูลสุขภาพ (เช่น ข้อมูลจากเครื่องชั่งน้ำหนัก Body Composition Analysis) และติดตามการเข้าร่วมกิจกรรมต่างๆ ทางสุขภาพได้
 - **Gamification Engine:** สร้างแรงจูงใจด้วยระบบภารกิจ (Missions) เมื่อทำภารกิจสำเร็จผู้ใช้จะได้รับคะแนน (Points) เพื่อปลดล็อค "ฉายา" และสะสมคะแนนเพื่อแข่งขันกับผู้ใช้อื่นๆ และชิงรางวัลต่างๆ
 - **Profile Management:** ระบบจัดการโปรไฟล์และรูปภาพส่งงาน ที่มีการบีบอัดและปรับลดขนาดรูปภาพอัตโนมัติบนเซิร์ฟเวอร์ ช่วยลดพื้นที่จัดเก็บและโหลดข้อมูลได้รวดเร็วขึ้น
@@ -15,18 +16,18 @@
 - **AES-256-CBC encryption:** สำหรับการเข้ารหัสข้อมูลผู้ใช้
 - **Anti-bot with Cloudflare Turnstile:** สำหรับป้องกันบอท
 
-
-
-
 ### 👑 สำหรับผู้ดูแลระบบ (Admin Dashboard)
+
 - **Comprehensive Management:** สามารถจัดการสิทธิ์ผู้ใช้งาน, สร้างและจัดการกิจกรรมสุขภาพ, และตรวจสอบหลักฐานการส่งภารกิจทั้งหมดได้
-- **Data Export:** สามารถส่งออก (Export) ข้อมูลสถิติของผู้ใช้งาน, การเข้าร่วมกิจกรรม, และข้อมูลสุขภาพ ออกมาเป็นไฟล์ Excel 
+- **Data Export:** สามารถส่งออก (Export) ข้อมูลสถิติของผู้ใช้งาน, การเข้าร่วมกิจกรรม, และข้อมูลสุขภาพ ออกมาเป็นไฟล์ Excel
 - **Audit Logging:** มีระบบเก็บบันทึกประวัติการทำงานของระบบ (เช่น ข้อผิดพลาดในการอัปโหลด) และการทำงานของ Admin เพื่อความปลอดภัยและง่ายต่อการดูแลระบบ
 
 ---
 
 ## 💻 Tech Stack (เทคโนโลยีที่ใช้งาน)
+
 ### Frontend (ระบบหน้าบ้าน)
+
 - **Framework:** Vue 3 (Composition API)
 - **Build Tool:** Vite
 - **Styling:** TailwindCSS v4
@@ -35,6 +36,7 @@
 - **UI & Interactions:** SweetAlert2, Lucide Vue, Swiper, Vuedraggable
 
 ### Backend (ระบบหลังบ้าน)
+
 - **Server Environment:** Node.js ใช้งานร่วมกับ Express
 - **Language:** TypeScript (รันผ่าน `tsx`)
 - **Database:** MySQL2 (ใช้ระบบ Connection Pooling เพื่อจัดการการเชื่อมต่ออย่างมีประสิทธิภาพ)
@@ -43,6 +45,7 @@
 - **Security:** ป้องกันบอทด้วย Cloudflare Turnstile, เข้ารหัสด้วย bcryptjs, และป้องกันการสแปมด้วย express-rate-limit
 
 ### Integrations (การเชื่อมต่อระบบภายนอก)
+
 - **LINE API:** เชื่อมต่อ LIFF (LINE Front-end Framework) และ Messaging API สำหรับการยืนยันตัวตนและการใช้งานผ่านแอป LINE
 - **Data Parsing:** ใช้ exceljs และ xlsx สำหรับสร้างและอ่านไฟล์ Excel
 
@@ -76,6 +79,7 @@
 - **`ecosystem.config.cjs`**: ไฟล์ตั้งค่าสำหรับ PM2 (Process Manager) ใช้สำหรับรันเซิร์ฟเวอร์บน Production ให้มีความเสถียร มีระบบ Auto-restart เมื่อระบบล่ม และจัดการเรื่องหน่วยความจำและ Log
 
 - **`cleanup-orphans.cjs`**: สคริปต์ทำความสะอาดพื้นที่เซิร์ฟเวอร์ (Garbage Collector) โดยจะค้นหาและลบรูปภาพตกค้างที่ไม่ได้ถูกใช้งานใน Database ทิ้งออกจากฮาร์ดดิสก์
+
 ---
 
 ## 🛠️ การตั้งค่าและติดตั้ง (Setup & Installation)
@@ -96,10 +100,62 @@
 
 ## 👥 ผู้จัดทำ (Authors)
 
-- **นายณัฐสิทธิ์ หล้าเสน่ห์ B6602840** 
-- **นางสาวพรชิตา สนิทเชื้อ B6648411** 
-- **นายพีรวิชญ์ เพียงโคกกรวด B6602413** 
+- **นายณัฐสิทธิ์ หล้าเสน่ห์ B6602840**
+- **นางสาวพรชิตา สนิทเชื้อ B6648411**
+- **นายพีรวิชญ์ เพียงโคกกรวด B6602413**
 
 ---
-*โปรเจกต์นี้เป็นลิขสิทธิ์และถูกพัฒนาขึ้นสำหรับใช้งานภายในระบบ SUTH VitalCare*
----
+
+## _โปรเจกต์นี้เป็นลิขสิทธิ์และถูกพัฒนาขึ้นสำหรับใช้งานภายในระบบ SUTH VitalCare_
+
+## รันบน Local แบบง่าย
+
+โปรเจกต์นี้เป็น Vue/Vite + Express ในโปรเซสเดียวกัน ดังนั้นสำหรับพัฒนาบนเครื่องให้ใช้คำสั่งนี้เป็นหลัก:
+
+```bash
+npm install
+npm run dev
+```
+
+จากนั้นเปิด:
+
+```text
+http://localhost:5001
+```
+
+คำสั่ง `npm run dev` จะตั้งค่า local ให้เอง:
+
+- รัน backend + frontend ผ่าน Express/Vite middleware ที่พอร์ต `5001`
+- ใช้ API path เป็น `/api`
+- ปิด Cloudflare Turnstile ใน local
+- ไม่เปิด Cloudflare tunnel
+
+ถ้าต้องการทดสอบ local แบบเปิด Cloudflare Turnstile:
+
+```bash
+npm run dev:turnstile
+```
+
+ต้องมีค่าเหล่านี้ใน `.env`:
+
+```env
+VITE_TURNSTILE_SITE_KEY=your_site_key
+TURNSTILE_SECRET_KEY=your_secret_key
+```
+
+ถ้าต้องการรันพร้อม Cloudflare tunnel สำหรับทดสอบ LIFF/LINE webhook:
+
+```bash
+npm run dev:tunnel
+```
+
+เครื่องต้องติดตั้ง `cloudflared` ไว้ก่อน และ tunnel จะชี้ไปที่ `http://localhost:5001`
+
+ตัวแปรสำหรับเปิด/ปิด Turnstile:
+
+```env
+VITE_TURNSTILE_ENABLED=false
+TURNSTILE_ENABLED=false
+```
+
+หมายเหตุ: ค่า `false` ของ `TURNSTILE_ENABLED` จะปิดการ verify เฉพาะตอน `NODE_ENV` ไม่ใช่ `production` เท่านั้น เพื่อกันเผลอปิด captcha บน production

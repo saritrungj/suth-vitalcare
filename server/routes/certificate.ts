@@ -132,14 +132,22 @@ router.post("/templates", async (req, res) => {
     );
 
     if (eventRows.length > 0) {
-      let currentConfig: any = { enabled: true, issue_mode: issue_mode || "event_end" };
-      
+      let currentConfig: any = {
+        enabled: true,
+        issue_mode: issue_mode || "event_end",
+      };
+
       const rawConfig = eventRows[0].certificate_config;
       if (rawConfig) {
         try {
-          const parsed = typeof rawConfig === "string" ? JSON.parse(rawConfig) : rawConfig;
+          const parsed =
+            typeof rawConfig === "string" ? JSON.parse(rawConfig) : rawConfig;
           if (parsed && typeof parsed === "object") {
-            currentConfig = { ...parsed, enabled: true, issue_mode: issue_mode || parsed.issue_mode || "event_end" };
+            currentConfig = {
+              ...parsed,
+              enabled: true,
+              issue_mode: issue_mode || parsed.issue_mode || "event_end",
+            };
           }
         } catch (e) {
           console.warn("[Cert] Failed to parse existing cert config:", e);
@@ -408,8 +416,8 @@ router.get("/check/:eventId/:userId", async (req, res) => {
         isGoalRequired,
         isPreTestRequired,
         isPostTestRequired,
-        criteriaStatus
-      }
+        criteriaStatus,
+      },
     });
   } catch (error: any) {
     res.status(500).json({ error: "Internal Server Error" });
@@ -583,7 +591,11 @@ async function renderCertificate(template: any, userData: any) {
             const res = await fetch(obj.src);
             imgBuffer = Buffer.from(await res.arrayBuffer());
           } else {
-            const fullPath = path.join(process.cwd(), "public", obj.src.replace(/^\//, ""));
+            const fullPath = path.join(
+              process.cwd(),
+              "public",
+              obj.src.replace(/^\//, ""),
+            );
             if (fs.existsSync(fullPath)) imgBuffer = fs.readFileSync(fullPath);
             else continue;
           }
@@ -610,10 +622,11 @@ async function renderCertificate(template: any, userData: any) {
       const targetW = Math.round(obj.width * obj.scaleX);
       const targetH = Math.round(obj.height * obj.scaleY);
       const fill = obj.fill || "transparent";
-      
-      const svg = obj.type === "rect" 
-        ? `<svg width="${targetW}" height="${targetH}"><rect width="${targetW}" height="${targetH}" fill="${fill}" opacity="${obj.opacity || 1}" /></svg>`
-        : `<svg width="${targetW}" height="${targetH}"><circle cx="${targetW/2}" cy="${targetH/2}" r="${targetW/2}" fill="${fill}" opacity="${obj.opacity || 1}" /></svg>`;
+
+      const svg =
+        obj.type === "rect"
+          ? `<svg width="${targetW}" height="${targetH}"><rect width="${targetW}" height="${targetH}" fill="${fill}" opacity="${obj.opacity || 1}" /></svg>`
+          : `<svg width="${targetW}" height="${targetH}"><circle cx="${targetW / 2}" cy="${targetH / 2}" r="${targetW / 2}" fill="${fill}" opacity="${obj.opacity || 1}" /></svg>`;
 
       overlays.push({
         input: Buffer.from(svg),
@@ -663,11 +676,9 @@ router.post("/generate", async (req, res) => {
     }
 
     if (!isSelf && !isAdmin && !isHost) {
-      return res
-        .status(403)
-        .json({
-          error: "Forbidden: You cannot generate certificates for this user",
-        });
+      return res.status(403).json({
+        error: "Forbidden: You cannot generate certificates for this user",
+      });
     }
 
     // 1. Check template
@@ -847,11 +858,9 @@ router.get("/available/:userId", async (req, res) => {
     const isHost = requesterRole === "host"; // Note: This 'isHost' check is simplified and doesn't verify event ownership for this route.
 
     if (!isSelf && !isAdmin && !isHost) {
-      return res
-        .status(403)
-        .json({
-          error: "Forbidden: You cannot check availability for this user",
-        });
+      return res.status(403).json({
+        error: "Forbidden: You cannot check availability for this user",
+      });
     }
 
     // Find events where user is registered and has a template but NO certificate record yet

@@ -52,7 +52,7 @@ export function useEventDetail() {
       if (Number(data.activity_id) === activityId.value) {
         fetchEvent(true);
       }
-    }
+    },
   });
   // ==========================
   // Core Event State
@@ -75,7 +75,10 @@ export function useEventDetail() {
       let rawVis = event.value.visibility || event.value.allowed_roles;
       if (typeof rawVis === "string") {
         rawVis = rawVis.trim();
-        if ((rawVis.startsWith('"') && rawVis.endsWith('"')) || (rawVis.startsWith("'") && rawVis.endsWith("'"))) {
+        if (
+          (rawVis.startsWith('"') && rawVis.endsWith('"')) ||
+          (rawVis.startsWith("'") && rawVis.endsWith("'"))
+        ) {
           try {
             const inner = JSON.parse(rawVis);
             if (inner) rawVis = inner;
@@ -92,17 +95,26 @@ export function useEventDetail() {
           try {
             vis = JSON.parse(rawVis);
           } catch {
-            vis = rawVis.slice(1, -1).split(",").map((s: string) => s.trim().replace(/^["']|["']$/g, ""));
+            vis = rawVis
+              .slice(1, -1)
+              .split(",")
+              .map((s: string) => s.trim().replace(/^["']|["']$/g, ""));
           }
         } else {
-          vis = rawVis.split(",").map((v: string) => v.trim()).filter(Boolean);
+          vis = rawVis
+            .split(",")
+            .map((v: string) => v.trim())
+            .filter(Boolean);
         }
       } else if (rawVis) {
         vis = [String(rawVis)];
       }
-    } catch (err) {
-    }
-    vis = [...new Set(vis.map(String).filter((v) => v && v !== "null" && v !== "undefined"))];
+    } catch (err) {}
+    vis = [
+      ...new Set(
+        vis.map(String).filter((v) => v && v !== "null" && v !== "undefined"),
+      ),
+    ];
     return vis.length === 0 ? ["general"] : vis;
   });
   const currentUserRoleLabel = ref("");
@@ -283,10 +295,10 @@ export function useEventDetail() {
     const muscle_diff =
       (Number(r0.muscle_mass) || 0) - (Number(r1.muscle_mass) || 0);
     if (fat_diff < 0 && muscle_diff > 0)
-      return "🔥 ร่างกายกำลัง Lean และเพิ่มมวลกล้ามเนื้อได้ดีเยี่ยม!";
-    if (fat_diff < 0) return "✨ เปอร์เซ็นต์ไขมันลดลง ร่างกายดูคมชัดขึ้น";
-    if (muscle_diff > 0) return "💪 มวลกล้ามเนื้อเพิ่มขึ้น พัฒนาการดีมาก";
-    return "🏃 รักษามาตรฐานการออกกำลังกายต่อไป สู้ๆ!";
+      return "ร่างกายกำลัง Lean และเพิ่มมวลกล้ามเนื้อได้ดีเยี่ยม!";
+    if (fat_diff < 0) return "เปอร์เซ็นต์ไขมันลดลง ร่างกายดูคมชัดขึ้น";
+    if (muscle_diff > 0) return "มวลกล้ามเนื้อเพิ่มขึ้น พัฒนาการดีมาก";
+    return "รักษามาตรฐานการออกกำลังกายต่อไป สู้ๆ!";
   });
   const muscleFatTrendText = computed(() => {
     if (tanitaRecords.value.length < 2) return "คงที่";
@@ -318,7 +330,7 @@ export function useEventDetail() {
     const diff =
       (Number(tanitaRecords.value[0].metabolic_age) || 0) -
       (Number(tanitaRecords.value[1].metabolic_age) || 0);
-    if (diff < 0) return `เด็กลง ${Math.abs(diff)} ปี ✨`;
+    if (diff < 0) return `เด็กลง ${Math.abs(diff)} ปี`;
     if (diff > 0) return `เพิ่มขึ้น ${diff} ปี`;
     return "เท่าเดิม";
   });
@@ -528,9 +540,11 @@ export function useEventDetail() {
         shouldShowTanita.value ? fetchTanitaHistory() : Promise.resolve(),
         hasGoalConfig.value ? fetchGoalProgress() : Promise.resolve(),
         fetchFavoriteStatus(),
-      ]).then(() => {
-        if (!silent) checkAndShowPopups();
-      }).catch(() => {});
+      ])
+        .then(() => {
+          if (!silent) checkAndShowPopups();
+        })
+        .catch(() => {});
     }
   };
   // Host & Registration Checks
@@ -601,7 +615,12 @@ export function useEventDetail() {
       }
     }
     const vis = allowedGroups.value;
-    if (vis.includes("general") || (vis.length === 1 && (vis[0].toLowerCase() === 'public' || vis[0].toLowerCase() === 'general'))) {
+    if (
+      vis.includes("general") ||
+      (vis.length === 1 &&
+        (vis[0].toLowerCase() === "public" ||
+          vis[0].toLowerCase() === "general"))
+    ) {
       hasPermissionToJoin.value = true;
       return;
     }
@@ -611,15 +630,17 @@ export function useEventDetail() {
       return;
     }
     // If the activity was created by a Team Host, restrict to that team ONLY
-    const creatorRole = event.value.creator?.role || event.value.creator?.role_name;
+    const creatorRole =
+      event.value.creator?.role || event.value.creator?.role_name;
     const isTeamMatch =
       authStore.user?.team_id &&
       event.value.creator?.team_id &&
       Number(authStore.user.team_id) === Number(event.value.creator.team_id);
-    if (creatorRole === 'host') {
+    if (creatorRole === "host") {
       if (!isTeamMatch) {
         hasPermissionToJoin.value = false;
-        noPermissionReason.value = "กิจกรรมนี้จำกัดเฉพาะสมาชิกภายในทีมของผู้จัดเท่านั้น";
+        noPermissionReason.value =
+          "กิจกรรมนี้จำกัดเฉพาะสมาชิกภายในทีมของผู้จัดเท่านั้น";
         return;
       }
     }
@@ -657,11 +678,23 @@ export function useEventDetail() {
     const roleTypeVis = vis.filter((v) => roleTypeGroups.includes(v));
     const gradeGroups = ["ป.1 - ป.6", "ม.1 - ม.6"];
     const specificGrades = [
-      "ป.1", "ป.2", "ป.3", "ป.4", "ป.5", "ป.6",
-      "ม.1", "ม.2", "ม.3", "ม.4", "ม.5", "ม.6"
+      "ป.1",
+      "ป.2",
+      "ป.3",
+      "ป.4",
+      "ป.5",
+      "ป.6",
+      "ม.1",
+      "ม.2",
+      "ม.3",
+      "ม.4",
+      "ม.5",
+      "ม.6",
     ];
     const yearGroups = ["ปี 1", "ปี 2", "ปี 3", "ปี 4", "ปี 5", "ปี 6"];
-    const gradeVis = vis.filter((v) => gradeGroups.includes(v) || specificGrades.includes(v));
+    const gradeVis = vis.filter(
+      (v) => gradeGroups.includes(v) || specificGrades.includes(v),
+    );
     const yearVis = vis.filter((v) => yearGroups.includes(v));
     const facultyVis = vis.filter(
       (v) =>
@@ -729,11 +762,19 @@ export function useEventDetail() {
           userFac = userDetail2 || "";
         }
         const standardFaculties = [
-          "สำนักวิชาวิทยาศาสตร์", "สำนักวิชาเทคโนโลยีสังคม", "สำนักวิชาเทคโนโลยีการเกษตร", 
-          "สำนักวิชาวิศวกรรมศาสตร์", "สำนักวิชาแพทยศาสตร์", "สำนักวิชาพยาบาลศาสตร์", 
-          "สำนักวิชาทันตแพทยศาสตร์", "สำนักวิชาสาธารณสุขศาสตร์", "สำนักวิชาศาสตร์และศิลป์ดิจิทัล"
+          "สำนักวิชาวิทยาศาสตร์",
+          "สำนักวิชาเทคโนโลยีสังคม",
+          "สำนักวิชาเทคโนโลยีการเกษตร",
+          "สำนักวิชาวิศวกรรมศาสตร์",
+          "สำนักวิชาแพทยศาสตร์",
+          "สำนักวิชาพยาบาลศาสตร์",
+          "สำนักวิชาทันตแพทยศาสตร์",
+          "สำนักวิชาสาธารณสุขศาสตร์",
+          "สำนักวิชาศาสตร์และศิลป์ดิจิทัล",
         ];
-        const isOtherFac = !standardFaculties.includes(userFac) && !standardFaculties.includes(userDetail2);
+        const isOtherFac =
+          !standardFaculties.includes(userFac) &&
+          !standardFaculties.includes(userDetail2);
         const passFac =
           facultyVis.length === 0 ||
           facultyVis.includes(userFac) ||
@@ -758,11 +799,19 @@ export function useEventDetail() {
         userRole === "บุคลากรโรงพยาบาล"
       ) {
         const standardFaculties = [
-          "สำนักวิชาวิทยาศาสตร์", "สำนักวิชาเทคโนโลยีสังคม", "สำนักวิชาเทคโนโลยีการเกษตร", 
-          "สำนักวิชาวิศวกรรมศาสตร์", "สำนักวิชาแพทยศาสตร์", "สำนักวิชาพยาบาลศาสตร์", 
-          "สำนักวิชาทันตแพทยศาสตร์", "สำนักวิชาสาธารณสุขศาสตร์", "สำนักวิชาศาสตร์และศิลป์ดิจิทัล"
+          "สำนักวิชาวิทยาศาสตร์",
+          "สำนักวิชาเทคโนโลยีสังคม",
+          "สำนักวิชาเทคโนโลยีการเกษตร",
+          "สำนักวิชาวิศวกรรมศาสตร์",
+          "สำนักวิชาแพทยศาสตร์",
+          "สำนักวิชาพยาบาลศาสตร์",
+          "สำนักวิชาทันตแพทยศาสตร์",
+          "สำนักวิชาสาธารณสุขศาสตร์",
+          "สำนักวิชาศาสตร์และศิลป์ดิจิทัล",
         ];
-        const isOtherDept = !standardFaculties.includes(userDetail1) && !standardFaculties.includes(userDetail2);
+        const isOtherDept =
+          !standardFaculties.includes(userDetail1) &&
+          !standardFaculties.includes(userDetail2);
         if (
           facultyVis.length > 0 &&
           !facultyVis.includes(userDetail1) &&
@@ -781,7 +830,11 @@ export function useEventDetail() {
       const isCollegeStudent = userRole === "นักศึกษา";
       const isStaff =
         userRole === "บุคลากรมหาวิทยาลัย" || userRole === "บุคลากรโรงพยาบาล";
-      if (gradeVis.length > 0 && !isStudent && !roleTypeVis.includes(userRole)) {
+      if (
+        gradeVis.length > 0 &&
+        !isStudent &&
+        !roleTypeVis.includes(userRole)
+      ) {
         hasPermissionToJoin.value = false;
         noPermissionReason.value = `กิจกรรมนี้จำกัดเฉพาะนักเรียนระดับชั้น: ${gradeVis.join(", ")}`;
         return;
@@ -810,7 +863,12 @@ export function useEventDetail() {
   };
   // Join / Leave Actions
   const joinActivity = async () => {
-    if (joining.value || slotFull.value || (!isRegistered.value && !acceptDataDisclosure.value)) return;
+    if (
+      joining.value ||
+      slotFull.value ||
+      (!isRegistered.value && !acceptDataDisclosure.value)
+    )
+      return;
     joining.value = true;
     if (!authStore.user?.id) {
       joining.value = false;
@@ -819,24 +877,29 @@ export function useEventDetail() {
     if (!hasPermissionToJoin.value) {
       joining.value = false;
       return showToast(
-        noPermissionReason.value || "คุณประมวลผลข้อมูลไม่ผ่านเงื่อนไขการเข้าร่วม",
+        noPermissionReason.value ||
+          "คุณประมวลผลข้อมูลไม่ผ่านเงื่อนไขการเข้าร่วม",
         "error",
       );
     }
     let joinMode = "solo"; // Force individual registration as per user request
     let eventCode = "";
     const hasCode = event.value.has_event_code || !!event.value.event_code;
-    const isTeamMember = authStore.user?.team_id && event.value.creator?.team_id && 
-                        Number(authStore.user.team_id) === Number(event.value.creator.team_id);
+    const isTeamMember =
+      authStore.user?.team_id &&
+      event.value.creator?.team_id &&
+      Number(authStore.user.team_id) === Number(event.value.creator.team_id);
     if (hasCode) {
       const { value: code, isConfirmed } = await swal.fire({
-        title: event.value.team_mode ? "รหัสเข้าร่วมทีม" : "รหัสเข้าร่วมกิจกรรม",
+        title: event.value.team_mode
+          ? "รหัสเข้าร่วมทีม"
+          : "รหัสเข้าร่วมกิจกรรม",
         text: "กรุณากรอกรหัสผ่านเพื่อเข้าร่วมกิจกรรมนี้",
         input: "text",
         showCancelButton: true,
         confirmButtonColor: "#F05A23",
         inputPlaceholder: "กรอกรหัสผ่านที่นี่...",
-        inputValidator: (value) => !value ? "กรุณากรอกรหัสผ่าน!" : null,
+        inputValidator: (value) => (!value ? "กรุณากรอกรหัสผ่าน!" : null),
       });
       if (!isConfirmed) {
         joining.value = false;
@@ -857,7 +920,7 @@ export function useEventDetail() {
         confirmButtonText: "ยืนยัน",
         cancelButtonText: "ยกเลิก",
         inputPlaceholder: "กรอกรหัสผ่านที่นี่...",
-        inputValidator: (value) => !value ? "กรุณากรอกรหัสผ่าน!" : null,
+        inputValidator: (value) => (!value ? "กรุณากรอกรหัสผ่าน!" : null),
         customClass: {
           confirmButton: "btn-global-orange !rounded-xl !px-10",
           cancelButton: "btn-global-outline !rounded-xl !px-10",
@@ -889,8 +952,10 @@ export function useEventDetail() {
         throw new Error(data.error || data.message || "เข้าร่วมไม่สำเร็จ");
       }
       isRegistered.value = true;
-      event.value.registration_count = (event.value.registration_count || 0) + 1;
-      if (event.value.filled !== undefined) event.value.filled = (event.value.filled || 0) + 1;
+      event.value.registration_count =
+        (event.value.registration_count || 0) + 1;
+      if (event.value.filled !== undefined)
+        event.value.filled = (event.value.filled || 0) + 1;
       showToast("เข้าร่วมกิจกรรมสำเร็จ!", "success");
       if (event.value.certificate_config?.enabled) checkCertEligibility();
       checkAndShowPopups();
@@ -931,8 +996,12 @@ export function useEventDetail() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "ออกไม่สำเร็จ");
       isRegistered.value = false;
-      event.value.registration_count = Math.max(0, (event.value.registration_count || 1) - 1);
-      if (event.value.filled !== undefined) event.value.filled = Math.max(0, (event.value.filled || 1) - 1);
+      event.value.registration_count = Math.max(
+        0,
+        (event.value.registration_count || 1) - 1,
+      );
+      if (event.value.filled !== undefined)
+        event.value.filled = Math.max(0, (event.value.filled || 1) - 1);
       showToast(data.message || "ออกจากกิจกรรมแล้ว");
     } catch (e: any) {
       showToast(e.message, "error");
@@ -975,12 +1044,12 @@ export function useEventDetail() {
   };
   const getTanitaLabel = (dateItem: any) => {
     if (!dateItem) return "";
-    if (typeof dateItem === 'object') return dateItem.label || "";
+    if (typeof dateItem === "object") return dateItem.label || "";
     return "";
   };
   const getTanitaDate = (dateItem: any) => {
     if (!dateItem) return "";
-    if (typeof dateItem === 'object') return dateItem.date || "";
+    if (typeof dateItem === "object") return dateItem.date || "";
     return String(dateItem);
   };
   const isPastOrToday = (dateItem: any) => {
@@ -1079,9 +1148,12 @@ export function useEventDetail() {
     if (!authStore.user?.id || !event.value?.id) return;
     loadingTanita.value = true;
     try {
-      const res = await fetch(`/api/tanita/user/${authStore.user.id}?eventId=${event.value.id}`, {
-        headers: { "x-user-id": authStore.user.id },
-      });
+      const res = await fetch(
+        `/api/tanita/user/${authStore.user.id}?eventId=${event.value.id}`,
+        {
+          headers: { "x-user-id": authStore.user.id },
+        },
+      );
       if (res.ok) tanitaRecords.value = await res.json();
     } catch {
     } finally {
@@ -1233,8 +1305,7 @@ export function useEventDetail() {
             evented: false,
           });
           cv.backgroundImage = bgImg;
-        } catch (e) {
-        }
+        } catch (e) {}
       }
       const replacements: Record<string, string> = {
         "{{user_fullname}}":
@@ -1377,9 +1448,9 @@ export function useEventDetail() {
       return showError("กรุณาลงทะเบียนก่อนเข้าร่วมภารกิจครับ");
     router.push({
       path: "/missions",
-      query: { 
+      query: {
         taskId: task?.id,
-        eventId: event.value?.id 
+        eventId: event.value?.id,
       },
     });
   };
@@ -1458,7 +1529,7 @@ export function useEventDetail() {
         fetchFavoriteStatus();
       }
     },
-    { deep: true }
+    { deep: true },
   );
   watch(activityId, () => {
     fetchEvent();
@@ -1582,4 +1653,4 @@ export function useEventDetail() {
     sanitizeHtml,
     currentUserRoleLabel,
   };
-}
+}

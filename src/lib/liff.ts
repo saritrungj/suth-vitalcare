@@ -1,5 +1,6 @@
 import liff from "@line/liff";
 import { authStore } from "../store/auth";
+import { writeStoredUser } from "../store/authSession";
 const LIFF_ID = (import.meta as any).env.VITE_LIFF_ID || "";
 const API_URL = (import.meta as any).env.VITE_API_URL || "/api";
 
@@ -8,10 +9,15 @@ const API_URL = (import.meta as any).env.VITE_API_URL || "/api";
  * `vitalcare_user` (e.g. tampered localStorage) must not seed an authenticated
  * state — we require at least a plausible `id`.
  */
-const isValidStoredUser = (value: unknown): value is { id: number | string } => {
+const isValidStoredUser = (
+  value: unknown,
+): value is { id: number | string } => {
   if (!value || typeof value !== "object") return false;
   const id = (value as any).id;
-  return (typeof id === "number" && Number.isFinite(id)) || (typeof id === "string" && id.length > 0);
+  return (
+    (typeof id === "number" && Number.isFinite(id)) ||
+    (typeof id === "string" && id.length > 0)
+  );
 };
 // ─── Session Validator ────────────────────────────────────────────────────────────────────
 /**
@@ -22,10 +28,14 @@ export const validateSessionWithServer = async (): Promise<boolean> => {
   if (!user?.id) return false;
   try {
     const response = await fetch(`${API_URL}/users/${user.id}/profile`, {
-      headers: { 'x-user-id': String(user.id) },
+      headers: { "x-user-id": String(user.id) },
       signal: AbortSignal.timeout(8000),
     });
-    if (response.status === 401 || response.status === 403 || response.status === 404) {
+    if (
+      response.status === 401 ||
+      response.status === 403 ||
+      response.status === 404
+    ) {
       forceLogout();
       return false;
     }
@@ -45,15 +55,15 @@ export const validateSessionWithServer = async (): Promise<boolean> => {
 };
 /** ล้าง Local State และ Redirect ไปหน้า Login */
 export const forceLogout = () => {
-  localStorage.removeItem('vitalcare_user');
+  writeStoredUser(null);
   authStore.user = null;
   authStore.loading = false;
   try {
     if (liff.isLoggedIn()) liff.logout();
   } catch {}
   // หน่วยความจำ path ที่ /login โดยไม่ต้องนำเข้า router
-  if (window.location.pathname !== '/login') {
-    window.location.href = '/login';
+  if (window.location.pathname !== "/login") {
+    window.location.href = "/login";
   }
 };
 /**
@@ -62,7 +72,7 @@ export const forceLogout = () => {
 export const initLiff = async () => {
   // 1. โหลดจาก LocalStorage ก่อนเสมอ (fast path) — ทำก่อน LIFF init เพื่อให้
   //    ผู้ใช้ email/Google และเบราว์เซอร์ที่ไม่มี LIFF ยังคง Login ค้างไว้ได้
-  const savedUser = localStorage.getItem('vitalcare_user');
+  const savedUser = localStorage.getItem("vitalcare_user");
   let hadSavedUser = false;
   if (savedUser) {
     try {
@@ -91,14 +101,14 @@ export const initLiff = async () => {
     // 3. ถ้าไม่มีข้อมูลใน Local แต่ Login ผ่าน LINE → Auto Login (Silent)
     if (!hadSavedUser && liff.isLoggedIn()) {
       try {
-        const userData = await backendLoginWithCaptcha('', false, true);
+        const userData = await backendLoginWithCaptcha("", false, true);
         if (userData) {
-          localStorage.setItem('vitalcare_user', JSON.stringify(userData));
+          localStorage.setItem("vitalcare_user", JSON.stringify(userData));
         }
       } catch (err: any) {
         // Silent background auto-login failed (e.g. user not provisioned yet).
         // Don't surface a toast — the user didn't initiate this. Log for debug.
-        console.warn('[liff] silent auto-login skipped:', err?.message || err);
+        console.warn("[liff] silent auto-login skipped:", err?.message || err);
       }
     }
   } catch (error) {
@@ -150,14 +160,17 @@ export const backendLoginWithCaptcha = async (
   }
 };
 export const logoutLiff = () => {
-  localStorage.removeItem('vitalcare_user');
+  writeStoredUser(null);
   if (liff.isLoggedIn()) {
-    try { liff.logout(); } catch {}
+    try {
+      liff.logout();
+    } catch {}
   }
   authStore.user = null;
+  authStore.loading = false;
 };
 export const loginLiff = () => {
   if (!liff.isLoggedIn()) {
     liff.login();
   }
-};
+};

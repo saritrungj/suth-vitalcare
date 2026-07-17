@@ -1,7 +1,7 @@
-import { reactive, computed } from 'vue';
+import { reactive, computed } from "vue";
 interface Toast {
   id: string;
-  type: 'success' | 'error' | 'info' | 'warning';
+  type: "success" | "error" | "info" | "warning";
   title: string;
   message: string;
   duration?: number;
@@ -10,7 +10,7 @@ interface Toast {
 }
 interface AlertModal {
   show: boolean;
-  type: 'error' | 'success' | 'confirm' | 'maintenance';
+  type: "error" | "success" | "confirm" | "maintenance";
   title: string;
   message: string;
   confirmLabel?: string;
@@ -24,23 +24,23 @@ export const uiStore = reactive({
   // Modals (สวยๆ ให้กด)
   alertModal: {
     show: false,
-    type: 'error',
-    title: '',
-    message: '',
-    confirmLabel: 'ตกลง',
-    cancelLabel: 'ยกเลิก'
+    type: "error",
+    title: "",
+    message: "",
+    confirmLabel: "ตกลง",
+    cancelLabel: "ยกเลิก",
   } as AlertModal,
   // Page Loaders
   isPageLoading: false,
-  loadingMessage: '',
+  loadingMessage: "",
   // SEO Management
-  pageTitle: 'VitalCare',
+  pageTitle: "VitalCare",
   // Fatal Error States (หน้า Error พรีเมียม)
   errorState: {
     hasError: false,
-    title: '',
-    message: '',
-    retryAction: null as null | (() => void)
+    title: "",
+    message: "",
+    retryAction: null as null | (() => void),
   },
   // Realtime Centralized Tracker
   lastRealtimeUpdate: Date.now(),
@@ -48,7 +48,12 @@ export const uiStore = reactive({
   triggerRealtimeUpdate() {
     this.lastRealtimeUpdate = Date.now();
   },
-  toast(type: Toast['type'], title: string, message: string, options?: Partial<Omit<Toast, 'id' | 'type' | 'title' | 'message'>>) {
+  toast(
+    type: Toast["type"],
+    title: string,
+    message: string,
+    options?: Partial<Omit<Toast, "id" | "type" | "title" | "message">>,
+  ) {
     const id = Math.random().toString(36).substring(2, 9);
     const newToast: Toast = {
       id,
@@ -57,7 +62,7 @@ export const uiStore = reactive({
       message,
       duration: options?.duration || 4000,
       actionLabel: options?.actionLabel,
-      onAction: options?.onAction
+      onAction: options?.onAction,
     };
     this.toasts.push(newToast);
     if (newToast.duration !== -1) {
@@ -68,31 +73,38 @@ export const uiStore = reactive({
     return id;
   },
   removeToast(id: string) {
-    this.toasts = this.toasts.filter(t => t.id !== id);
+    this.toasts = this.toasts.filter((t) => t.id !== id);
   },
-  showAlert(type: AlertModal['type'], title: string, message: string, options?: Partial<Omit<AlertModal, 'show' | 'type' | 'title' | 'message'>>) {
+  showAlert(
+    type: AlertModal["type"],
+    title: string,
+    message: string,
+    options?: Partial<Omit<AlertModal, "show" | "type" | "title" | "message">>,
+  ) {
     this.alertModal = {
       show: true,
       type,
       title,
       message,
-      confirmLabel: options?.confirmLabel || 'ตกลง',
-      cancelLabel: options?.cancelLabel || 'ยกเลิก',
+      confirmLabel: options?.confirmLabel || "ตกลง",
+      cancelLabel: options?.cancelLabel || "ยกเลิก",
       onConfirm: options?.onConfirm,
-      onCancel: options?.onCancel
+      onCancel: options?.onCancel,
     };
   },
   hideAlert() {
     this.alertModal.show = false;
   },
-  setLoading(state: boolean, message: string = '') {
+  setLoading(state: boolean, message: string = "") {
     this.isPageLoading = state;
     this.loadingMessage = message;
   },
   setPageTitle(title: string) {
-    this.pageTitle = title ? `${title} | VitalCare` : 'VitalCare';
-    if (typeof document !== 'undefined') {
-      document.title = this.pageTitle;
+    this.pageTitle = title ? `${title} | VitalCare` : "VitalCare";
+    if (typeof document !== "undefined") {
+      // NFC normalize: กัน title เพี้ยนบน WebView บางตัวที่ render สระ/วรรณยุกต์
+      // ไทยแบบ decomposed (NFD) ผิดตำแหน่ง เช่นข้อมูลที่ผ่านมาจาก macOS/iOS
+      document.title = this.pageTitle.normalize("NFC");
     }
-  }
-});
+  },
+});

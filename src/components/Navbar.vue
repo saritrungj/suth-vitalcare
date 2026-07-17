@@ -10,9 +10,10 @@ import {
   UsersRound,
   CircleUserRound,
   ShieldCheck,
-  Languages,
+  ShoppingBag,
 } from "lucide-vue-next";
-
+import LanguageMenu from "./common/LanguageMenu.vue";
+import NotificationBell from "./common/NotificationBell.vue";
 const router = useRouter();
 const route = useRoute();
 const activeIndex = ref(-1);
@@ -20,11 +21,16 @@ const isScrolled = ref(false);
 
 // ── Navigation items (reactive to language) ──────────────────────────────────
 const navigation = computed(() => [
-  { name: langStore.t('nav_activities'),  icon: Activity,        path: "/" },
-  { name: langStore.t('nav_missions'),    icon: Target,          path: "/missions" },
-  { name: langStore.t('nav_rankings'),    icon: Medal,           path: "/rankings" },
-  { name: langStore.t('nav_create_team'), icon: UsersRound,      path: "/create-teams" },
-  { name: langStore.t('nav_profile'),     icon: CircleUserRound, path: "/profile" },
+  { name: langStore.t("nav_activities"), icon: Activity, path: "/" },
+  { name: langStore.t("nav_missions"), icon: Target, path: "/missions" },
+  { name: langStore.t("nav_rankings"), icon: Medal, path: "/rankings" },
+  {
+    name: langStore.t("nav_create_team"),
+    icon: UsersRound,
+    path: "/create-teams",
+  },
+  { name: langStore.t("nav_shop"), icon: ShoppingBag, path: "/shop" },
+  { name: langStore.t("nav_profile"), icon: CircleUserRound, path: "/profile" },
 ]);
 
 const isAdmin = computed(() => authStore.user?.role?.toLowerCase() === "admin");
@@ -55,7 +61,7 @@ watch(
       activeIndex.value = index;
     } else {
       const subIndex = navigation.value.findIndex((item) => {
-        if (item.path === '/') return false;
+        if (item.path === "/") return false;
         return newPath.startsWith(item.path);
       });
       activeIndex.value = subIndex;
@@ -87,10 +93,14 @@ onUnmounted(() => {
 
 <template>
   <!-- ===== DESKTOP / TABLET NAVBAR (Top Bar) ===== -->
-  <nav v-if="!hideNavbar && !isMobile" class="navbar-top" :class="{ 'is-scrolled': isScrolled }">
+  <nav
+    v-if="!hideNavbar && !isMobile"
+    class="navbar-top"
+    :class="{ 'is-scrolled': isScrolled }"
+  >
     <div class="container-nav">
       <router-link to="/" class="brand">
-        <img src="/logo.png" class="logo" alt="VitalCare" />
+        <img src="/logo.png" class="logo" alt="" />
         <span class="brand-text">VitalCare</span>
       </router-link>
 
@@ -101,6 +111,7 @@ onUnmounted(() => {
           :to="item.path"
           class="nav-item"
           :class="{ active: activeIndex === index }"
+          :aria-current="activeIndex === index ? 'page' : undefined"
           @click="setActive(index)"
         >
           <component :is="item.icon" class="icon-nav" />
@@ -113,21 +124,14 @@ onUnmounted(() => {
           class="nav-item admin-btn"
         >
           <ShieldCheck class="icon-nav" />
-          <span class="label">{{ langStore.t('nav_admin') }}</span>
+          <span class="label">{{ langStore.t("nav_admin") }}</span>
         </button>
       </div>
 
       <div class="user-section">
-        <!-- Language Toggle (Desktop) -->
-        <button
-          class="lang-toggle"
-          @click="langStore.toggle()"
-          :title="langStore.locale === 'th' ? 'Switch to English' : 'เปลี่ยนเป็นภาษาไทย'"
-          :aria-label="langStore.locale === 'th' ? 'Switch to English' : 'Switch to Thai'"
-        >
-          <Languages :size="16" class="lang-icon" />
-          <span class="lang-label">{{ langStore.locale === 'th' ? 'EN' : 'ไทย' }}</span>
-        </button>
+        <NotificationBell />
+        <!-- Language Switcher (Desktop popover) -->
+        <LanguageMenu />
 
         <router-link to="/profile" class="avatar-link">
           <img
@@ -143,18 +147,6 @@ onUnmounted(() => {
 
   <!-- ===== MOBILE NAVBAR (Bottom Tab Bar) ===== -->
   <nav v-if="!hideNavbar && isMobile" class="navbar-mobile">
-    <!-- Language Toggle Pill (Mobile — top of the bottom bar) -->
-    <div class="mobile-lang-strip">
-      <button
-        class="lang-toggle-mobile"
-        @click="langStore.toggle()"
-        :aria-label="langStore.locale === 'th' ? 'Switch to English' : 'Switch to Thai'"
-      >
-        <Languages :size="13" />
-        <span>{{ langStore.locale === 'th' ? 'EN' : 'ไทย' }}</span>
-      </button>
-    </div>
-
     <div class="mobile-grid">
       <router-link
         v-for="(item, index) in navigation"
@@ -162,6 +154,7 @@ onUnmounted(() => {
         :to="item.path"
         class="tab-item"
         :class="{ active: activeIndex === index }"
+        :aria-current="activeIndex === index ? 'page' : undefined"
         @click="setActive(index)"
       >
         <div class="tab-icon-wrapper">
@@ -178,7 +171,7 @@ onUnmounted(() => {
         <div class="tab-icon-wrapper">
           <ShieldCheck class="tab-icon" />
         </div>
-        <span class="tab-label">{{ langStore.t('nav_admin') }}</span>
+        <span class="tab-label">{{ langStore.t("nav_admin") }}</span>
       </button>
     </div>
   </nav>
@@ -186,13 +179,17 @@ onUnmounted(() => {
 
 <style scoped>
 :global(:root) {
-  --orange-primary: #FF6B00;
-  --orange-soft: #FFF4ED;
+  /* Accent maps to the app's teal brand tokens (see index.css).
+     --accent      : icons / underline / focus rings  (large + non-text, >=3:1)
+     --accent-text : active / hover label text        (#127555, ~5:1, passes AA)
+     --accent-soft : soft hover/active backgrounds */
+  --accent: var(--color-primary);
+  --accent-text: var(--color-primary-dark);
+  --accent-soft: var(--color-primary-light);
   --gray-main: #111827;
-  --gray-muted: #6B7280;
-  --white-pure: #FFFFFF;
-  --border-color: #F3F4F6;
-  --font-thai: "Sarabun", "Inter", sans-serif;
+  --gray-muted: #6b7280;
+  --white-pure: #ffffff;
+  --border-color: #f3f4f6;
 }
 
 /* ========== NAVBAR TOP (Desktop/Tablet) ========== */
@@ -204,10 +201,14 @@ onUnmounted(() => {
   width: 100%;
   background-color: var(--white-pure);
   border-bottom: 1px solid var(--border-color);
-  transition: all 0.3s ease;
+  transition:
+    background-color 0.3s ease,
+    box-shadow 0.3s ease;
 }
 @media (min-width: 768px) {
-  .navbar-top { display: block; }
+  .navbar-top {
+    display: block;
+  }
 }
 .navbar-top.is-scrolled {
   background-color: rgba(255, 255, 255, 0.8);
@@ -265,30 +266,44 @@ onUnmounted(() => {
   border: none;
   cursor: pointer;
   white-space: nowrap;
-  transition: all 0.2s ease;
+  transition: color 0.2s ease;
   position: relative;
 }
 .nav-item::after {
-  content: '';
+  content: "";
   position: absolute;
   bottom: -1px;
   left: 0;
   width: 100%;
   height: 3px;
-  background-color: var(--orange-primary);
+  background-color: var(--accent);
   transform: scaleX(0);
   transition: transform 0.2s ease;
 }
-.nav-item:hover { color: var(--orange-primary); }
+.nav-item:hover {
+  color: var(--accent-text);
+}
 .nav-item.active {
-  color: var(--orange-primary);
+  color: var(--accent-text);
   font-weight: 700;
 }
-.nav-item.active::after { transform: scaleX(1); }
+.nav-item.active::after {
+  transform: scaleX(1);
+}
+.nav-item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  border-radius: 6px;
+}
 .icon-nav {
   width: 20px;
   height: 20px;
   stroke-width: 2.2;
+}
+@media (prefers-reduced-motion: reduce) {
+  .nav-item::after {
+    transition: none;
+  }
 }
 
 /* User Section */
@@ -313,42 +328,54 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
 }
-.avatar-link:hover { border-color: var(--orange-primary); }
-.avatar-link img { width: 100%; height: 100%; object-fit: cover; }
-.fallback-avatar { width: 26px; height: 26px; color: var(--gray-muted); }
-
-/* ── Language Toggle (Desktop) ─────────────────────────────────────────── */
-.lang-toggle {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  padding: 6px 12px;
-  border-radius: 20px;
-  border: 1.5px solid var(--border-color);
-  background: transparent;
-  cursor: pointer;
-  font-size: 0.78rem;
-  font-weight: 700;
+.avatar-link:hover {
+  border-color: var(--accent);
+}
+.avatar-link:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.avatar-link img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.fallback-avatar {
+  width: 26px;
+  height: 26px;
   color: var(--gray-muted);
-  transition: all 0.2s ease;
-  white-space: nowrap;
 }
-.lang-toggle:hover {
-  border-color: var(--orange-primary);
-  color: var(--orange-primary);
-  background: var(--orange-soft);
+
+/* Admin button shares .nav-item styling; ensure focus ring matches links. */
+.admin-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  border-radius: 6px;
 }
-.lang-icon { flex-shrink: 0; }
-.lang-label { line-height: 1; }
 
 /* ========== TABLET SPECIFIC (768px - 1024px) ========== */
 @media (min-width: 768px) and (max-width: 1024px) {
-  .container-nav { padding: 0 16px; }
-  .brand-text { display: none; }
-  .nav-item { padding: 0 10px; font-size: 0.9rem; }
-  .nav-links { gap: 0; }
-  .lang-label { display: none; } /* แท็บเล็ต: แสดงแค่ไอคอน ไม่แสดงข้อความ */
-  .lang-toggle { padding: 6px 10px; }
+  .container-nav {
+    padding: 0 16px;
+  }
+  .brand-text {
+    display: none;
+  }
+  .nav-item {
+    padding: 0 10px;
+    font-size: 0.9rem;
+  }
+  .nav-links {
+    gap: 0;
+  }
+  /* Tablet: language trigger shows icon only (label lives in child component). */
+  .user-section :deep(.lang-trigger-label) {
+    display: none;
+  }
+  .user-section :deep(.lang-trigger) {
+    padding: 6px 10px;
+  }
 }
 
 /* ========== NAVBAR MOBILE (Bottom Nav) ========== */
@@ -362,34 +389,6 @@ onUnmounted(() => {
   box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.05);
   z-index: 200;
   padding-bottom: env(safe-area-inset-bottom, 0px);
-}
-
-/* ── Language strip above tab bar (Mobile) ─────────────────────────────── */
-.mobile-lang-strip {
-  display: flex;
-  justify-content: flex-end;
-  padding: 4px 12px 0;
-  border-bottom: 1px solid var(--border-color);
-}
-.lang-toggle-mobile {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 3px 10px;
-  border-radius: 20px;
-  border: 1.5px solid var(--border-color);
-  background: transparent;
-  cursor: pointer;
-  font-size: 0.7rem;
-  font-weight: 700;
-  color: var(--gray-muted);
-  transition: all 0.2s ease;
-  margin-bottom: 2px;
-}
-.lang-toggle-mobile:active {
-  background: var(--orange-soft);
-  border-color: var(--orange-primary);
-  color: var(--orange-primary);
 }
 
 .mobile-grid {
@@ -431,14 +430,25 @@ onUnmounted(() => {
   font-weight: 600;
   white-space: nowrap;
 }
-.tab-item.active { color: var(--orange-primary); }
-.tab-item.active .tab-icon-wrapper { background-color: transparent; }
-.tab-item.active .tab-icon { stroke-width: 2.5; }
+.tab-item.active {
+  color: var(--accent-text);
+}
+.tab-item.active .tab-icon-wrapper {
+  background-color: transparent;
+}
+.tab-item.active .tab-icon {
+  stroke-width: 2.5;
+}
+.tab-item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -3px;
+  border-radius: 10px;
+}
 
-/* Push app content up */
+/* Push app content up (bottom tab bar = 60px + safe-area, no language strip) */
 @media (max-width: 767px) {
   :global(#app) {
-    padding-bottom: calc(64px + env(safe-area-inset-bottom, 0px));
+    padding-bottom: calc(60px + env(safe-area-inset-bottom, 0px));
   }
 }
 </style>

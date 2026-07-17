@@ -1854,8 +1854,10 @@ export function useAdminActivityDashboard(
     const tanitaChangesArr = tanitaChanges.value || [];
     let tanitaImproved = 0;
     let tanitaWarning = 0;
-    const tanitaGender: Record<string, { improved: number; warning: number; stable: number }> =
-      {};
+    const tanitaGender: Record<
+      string,
+      { improved: number; warning: number; stable: number }
+    > = {};
     tanitaChangesArr.forEach((t) => {
       const g =
         t.gender === "male" || t.gender === "ชาย"
@@ -1863,7 +1865,8 @@ export function useAdminActivityDashboard(
           : t.gender === "female" || t.gender === "หญิง"
             ? "หญิง"
             : "ไม่ระบุ";
-      if (!tanitaGender[g]) tanitaGender[g] = { improved: 0, warning: 0, stable: 0 };
+      if (!tanitaGender[g])
+        tanitaGender[g] = { improved: 0, warning: 0, stable: 0 };
 
       const wDiff =
         Number(t.latest_tanita?.weight || 0) -
