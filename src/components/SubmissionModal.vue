@@ -53,6 +53,8 @@
               v-for="sub in filteredSubmissions"
               :key="sub.id"
               class="sm-item"
+              :class="{ 'sm-item--clickable': !!safeImageUrl(sub.img_url) }"
+              @click="openLightbox(sub)"
             >
               <img
                 v-if="safeImageUrl(sub.img_url)"
@@ -89,6 +91,26 @@
       </div>
     </div>
   </transition>
+  <transition name="sm-fade">
+    <div
+      v-if="lightboxSrc"
+      class="sm-lightbox"
+      @click.self="lightboxSrc = null"
+    >
+      <button
+        class="sm-lightbox-close"
+        @click="lightboxSrc = null"
+        :aria-label="langStore.t('close')"
+      >
+        <X :size="22" />
+      </button>
+      <img
+        :src="lightboxSrc"
+        class="sm-lightbox-img"
+        :alt="langStore.t('proof_image')"
+      />
+    </div>
+  </transition>
 </template>
 
 <script setup lang="ts">
@@ -110,6 +132,12 @@ defineEmits<{ (e: "close"): void }>();
 const loading = ref(false);
 const error = ref(false);
 const submissions = ref<any[]>([]);
+const lightboxSrc = ref<string | null>(null);
+
+const openLightbox = (sub: any) => {
+  const src = safeImageUrl(sub.img_url);
+  if (src) lightboxSrc.value = src;
+};
 
 const STATUS_CLASS: Record<string, string> = {
   approved: "sm-badge--approved",
@@ -173,6 +201,7 @@ const retry = () => {
 watch(
   () => [props.open, props.user?.id],
   ([isOpen, id]) => {
+    if (!isOpen) lightboxSrc.value = null;
     if (isOpen && id) fetchSubmissions(id);
   },
   { immediate: true },
@@ -424,6 +453,48 @@ const formatDate = (val: any) => {
 .sm-fade-enter-from,
 .sm-fade-leave-to {
   opacity: 0;
+}
+.sm-item--clickable {
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.sm-item--clickable:hover {
+  background: #f8fafc;
+}
+.sm-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  background: rgba(15, 23, 42, 0.85);
+  backdrop-filter: blur(6px);
+}
+.sm-lightbox-img {
+  max-width: 100%;
+  max-height: 90vh;
+  border-radius: 12px;
+  object-fit: contain;
+}
+.sm-lightbox-close {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
+  cursor: pointer;
+}
+.sm-lightbox-close:hover {
+  background: rgba(255, 255, 255, 0.28);
 }
 .sm-retry {
   margin-top: 4px;
