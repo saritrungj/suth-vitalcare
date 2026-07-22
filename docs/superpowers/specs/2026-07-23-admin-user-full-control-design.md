@@ -57,8 +57,8 @@ healthHistory (tanita), registrations }`. Extended here (see below).
 
 - New route in `src/router/index.ts`:
   `{ path: "/admin/users/:id", name: "AdminUserDetail",
-   component: () => import("../views/AdminUserDetail.vue"),
-   meta: { title: "จัดการข้อมูลสมาชิก", hideNavbar: true, requiresAdmin: true } }`.
+ component: () => import("../views/AdminUserDetail.vue"),
+ meta: { title: "จัดการข้อมูลสมาชิก", hideNavbar: true, requiresAdmin: true } }`.
 - New view `src/views/AdminUserDetail.vue` — header (avatar, name, role/status,
   back button) + a tab bar. Tabs:
   1. **โปรไฟล์** — all editable profile fields (reuses `PATCH /api/users/:id`).
