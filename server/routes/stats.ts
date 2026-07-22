@@ -1058,106 +1058,25 @@ router.get("/team/rank/:teamId", async (req, res) => {
   try {
     const { teamId } = req.params;
     const eventId = req.query.activity_id || req.query.event_id;
-    const unit = req.query.unit as string;
 
     if (!teamId || teamId === "undefined" || isNaN(Number(teamId))) {
       return res.status(400).json({ error: "Invalid team ID" });
     }
 
     if (eventId) {
-      // Fetch event goal_config to get the official unit
-      const [eventRows]: any = await pool.query(
-        "SELECT goal_config FROM events WHERE id = ?",
-        [eventId],
+      const { rows, isPoints } = await computeActivityLeaderboard(
+        eventId as string,
+        req,
       );
-      let officialUnit = "";
-      if (eventRows.length > 0) {
-        let gc = parseGoalConfig(eventRows[0].goal_config);
-        officialUnit = normalizeUnit(
-          gc.target_unit ||
-            gc.unit ||
-            (gc.target_type !== "points" ? gc.target_type : ""),
-        );
+      const teams = aggregateTeams(rows, isPoints);
+      const idx = teams.findIndex((t) => String(t.id) === String(teamId));
+      if (idx === -1) {
+        return res.json({ rank: 0, score: 0, points: 0 });
       }
-
-      let requestedUnit = normalizeUnit(unit);
-      if (!requestedUnit || requestedUnit === "points") {
-        requestedUnit = officialUnit;
-      }
-      const queryUnit = officialUnit || requestedUnit || "points";
-      const isPoints = queryUnit === "points";
-
-      // 1. Get team score, scoped to the same member filters used by the list.
-      const teamScoreUf = buildUserFilter(req, "u");
-      const scoreQuery = isPoints
-        ? `SELECT SUM(t.points) as score FROM submissions s JOIN tasks t ON s.task_id = t.id JOIN users u ON s.user_id = u.id WHERE u.team_id = ? AND t.event_id = ? AND s.status = 'approved'${teamScoreUf.sql}`
-        : `SELECT SUM(s.value) as score FROM submissions s JOIN tasks t ON s.task_id = t.id JOIN users u ON s.user_id = u.id WHERE u.team_id = ? AND t.event_id = ? AND s.status = 'approved' AND (t.metric_unit = ? OR t.metric_unit = 'km' AND ? = 'km' OR t.metric_unit = 'kcal' AND ? = 'kcal' OR ? = '')${teamScoreUf.sql}`;
-
-      const [scoreRows]: any = await pool.query(
-        scoreQuery,
-        isPoints
-          ? [teamId, eventId, ...teamScoreUf.p]
-          : [
-              teamId,
-              eventId,
-              queryUnit,
-              queryUnit,
-              queryUnit,
-              queryUnit,
-              ...teamScoreUf.p,
-            ],
-      );
-      const teamScore = Number(scoreRows[0]?.score) || 0;
-
-      // 2. Count teams deterministically to match frontend index
-      const uf = buildUserFilter(req, "u");
-      const rankScoreUf = buildUserFilter(req, "u2");
-      const rankQuery = isPoints
-        ? `SELECT COUNT(*) + 1 as \`rank\` FROM (
-            SELECT tm.id, (SELECT COALESCE(SUM(t.points), 0) FROM submissions s JOIN tasks t ON s.task_id = t.id JOIN users u2 ON s.user_id = u2.id WHERE u2.team_id = tm.id AND t.event_id = ? AND s.status = 'approved'${rankScoreUf.sql}) as total
-            FROM teams tm WHERE tm.id IN (SELECT DISTINCT u.team_id FROM registrations r JOIN users u ON r.user_id = u.id WHERE r.event_id = ?${uf.sql} AND u.team_id IS NOT NULL)
-          ) as winners WHERE total > ? OR (total = ? AND id < ?)`
-        : `SELECT COUNT(*) + 1 as \`rank\` FROM (
-            SELECT tm.id, (SELECT COALESCE(SUM(s.value), 0) FROM submissions s JOIN tasks t ON s.task_id = t.id JOIN users u2 ON s.user_id = u2.id WHERE u2.team_id = tm.id AND t.event_id = ? AND s.status = 'approved' AND (t.metric_unit = ? OR ? = '')${rankScoreUf.sql}) as total
-            FROM teams tm WHERE tm.id IN (SELECT DISTINCT u.team_id FROM registrations r JOIN users u ON r.user_id = u.id WHERE r.event_id = ?${uf.sql} AND u.team_id IS NOT NULL)
-          ) as winners WHERE total > ? OR (total = ? AND id < ?)`;
-
-      const rankParams = isPoints
-        ? [
-            eventId,
-            ...rankScoreUf.p,
-            eventId,
-            ...uf.p,
-            teamScore,
-            teamScore,
-            teamId,
-          ]
-        : [
-            eventId,
-            queryUnit,
-            queryUnit,
-            ...rankScoreUf.p,
-            eventId,
-            ...uf.p,
-            teamScore,
-            teamScore,
-            teamId,
-          ];
-      const [rankRows]: any = await pool.query(rankQuery, rankParams);
-
-      let teamPoints = teamScore;
-      if (!isPoints) {
-        const [ptsRows]: any = await pool.query(
-          `SELECT SUM(t.points) as tp FROM submissions s JOIN tasks t ON s.task_id = t.id JOIN users u ON s.user_id = u.id WHERE u.team_id = ? AND t.event_id = ? AND s.status = 'approved'`,
-          [teamId, eventId],
-        );
-        teamPoints = Number(ptsRows[0]?.tp) || 0;
-      }
-
-      res.json({
-        rank: rankRows[0]?.rank || 1,
-        score: teamScore,
-        points: teamPoints,
+      return res.json({
+        rank: idx + 1,
+        score: teams[idx].total,
+        points: teams[idx].total,
       });
     } else {
       // Global Team Rank (Live Sum)
