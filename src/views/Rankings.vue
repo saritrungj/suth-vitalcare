@@ -370,7 +370,7 @@ const handleDropdownScroll = (e: Event) => {
 };
 
 const currentActivityTitle = computed(() => {
-  if (!selectedActivityId.value) return langStore.t("rank_overall");
+  if (!selectedActivityId.value) return langStore.t("rankings");
   const act = filteredActivities.value.find(
     (a) => String(a.id) === String(selectedActivityId.value),
   );
