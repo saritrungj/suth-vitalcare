@@ -39,18 +39,6 @@
                     </div>
                     <div class="dropdown-list" @scroll="handleDropdownScroll">
                       <div
-                        class="dropdown-item"
-                        :class="{
-                          'is-selected': !selectedActivityId,
-                        }"
-                        @click="handleSelectActivity(null)"
-                      >
-                        <div class="di-name text-primary font-bold">
-                          {{ langStore.t("rank_overall") }}
-                        </div>
-                        <div class="di-desc">VitalCare System</div>
-                      </div>
-                      <div
                         v-for="act in visibleActivities"
                         :key="act.id"
                         class="dropdown-item"
@@ -95,167 +83,200 @@
               <p>{{ langStore.t("rank_subtitle") }}</p>
             </div>
           </div>
-          <div class="tabs-container">
-            <button
-              class="tab-btn"
-              :class="{ active: activeTab === 'individual' }"
-              @click="switchTab('individual')"
-            >
-              {{ langStore.t("rank_individual") }}
-            </button>
-            <button
-              class="tab-btn"
-              :class="{ active: activeTab === 'team' }"
-              @click="switchTab('team')"
-            >
-              {{ langStore.t("rank_team") }}
-            </button>
+          <div v-if="!hasJoinedActivities" class="empty-state no-joined">
+            <div class="empty-icon">
+              <Inbox :size="48" />
+            </div>
+            <p>{{ langStore.t("rank_no_joined") }}</p>
+            <router-link to="/activities" class="retry-btn">
+              {{ langStore.t("rank_no_joined_cta") }}
+            </router-link>
           </div>
 
-          <div class="filter-bar">
-            <MultiSelectFilter
-              :options="roleTypeOptions"
-              :modelValue="selectedRoleTypes"
-              :label="langStore.t('rank_filter_role_type')"
-              @update:modelValue="setSelectedRoleTypes"
-            />
-            <button
-              v-if="hasFilters"
-              class="filter-clear"
-              @click="clearFilters"
-            >
-              <X :size="16" />
-              <span>{{ langStore.t("rank_filter_clear") }}</span>
-            </button>
-          </div>
-
-          <div class="leaderboard-card">
-            <div class="list-header">
-              <div class="col-rank">{{ langStore.t("rank_col") }}</div>
-              <div class="col-name">
-                {{
-                  activeTab === "individual"
-                    ? langStore.t("rank_username")
-                    : langStore.t("rank_teamname")
-                }}
-              </div>
-              <div class="col-score">
-                {{ isPoints ? langStore.t("points") : rankingUnitLong }}
-              </div>
-            </div>
-            <div v-if="loading" class="loading-state">
-              <div class="spinner"></div>
-              <p>{{ langStore.t("loading_data") }}</p>
-            </div>
-            <div v-else-if="error" class="empty-state">
-              <div class="empty-icon">
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="1.5"
-                  width="48"
-                  height="48"
-                >
-                  <circle cx="12" cy="12" r="9" />
-                  <path d="M12 8v4m0 4h.01" />
-                </svg>
-              </div>
-              <p>{{ langStore.t("error_connect") }}</p>
-              <button class="retry-btn" @click="changePage(currentPage)">
-                {{ langStore.t("retry") }}
+          <template v-else>
+            <div class="tabs-container">
+              <button
+                class="tab-btn"
+                :class="{ active: activeTab === 'individual' }"
+                @click="switchTab('individual')"
+              >
+                {{ langStore.t("rank_individual") }}
+              </button>
+              <button
+                class="tab-btn"
+                :class="{ active: activeTab === 'team' }"
+                @click="switchTab('team')"
+              >
+                {{ langStore.t("rank_team") }}
               </button>
             </div>
-            <div v-else-if="tableRows.length === 0" class="empty-state">
-              <div class="empty-icon">
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="1.5"
-                  width="48"
-                  height="48"
-                >
-                  <path
-                    d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"
-                  />
-                </svg>
-              </div>
-              <p>{{ langStore.t("rank_no_data") }}</p>
-            </div>
-            <TransitionGroup v-else tag="div" name="list-row" class="list-body">
-              <div
-                v-for="(item, idx) in tableRows"
-                :key="item.id ?? idx"
-                class="list-row"
-                :data-my-rank="isCurrentUser(item) ? 'true' : null"
-                :class="{
-                  'is-me': isCurrentUser(item),
-                  'top-3': item.rank <= 3,
-                }"
-                @click="handleItemClick(item)"
+
+            <div class="filter-bar">
+              <MultiSelectFilter
+                :options="roleTypeOptions"
+                :modelValue="selectedRoleTypes"
+                :label="langStore.t('rank_filter_role_type')"
+                @update:modelValue="setSelectedRoleTypes"
+              />
+              <button
+                v-if="hasFilters"
+                class="filter-clear"
+                @click="clearFilters"
               >
-                <div class="col-rank">
-                  <span v-if="item.rank === 1" class="medal gold">1</span>
-                  <span v-else-if="item.rank === 2" class="medal silver"
-                    >2</span
-                  >
-                  <span v-else-if="item.rank === 3" class="medal bronze"
-                    >3</span
-                  >
-                  <span v-else class="rank-num">{{
-                    item.rank || (currentPage - 1) * PAGE_SIZE + Number(idx) + 1
-                  }}</span>
-                </div>
+                <X :size="16" />
+                <span>{{ langStore.t("rank_filter_clear") }}</span>
+              </button>
+            </div>
+
+            <div class="leaderboard-card">
+              <div class="list-header">
+                <div class="col-rank">{{ langStore.t("rank_col") }}</div>
                 <div class="col-name">
-                  <div v-if="activeTab === 'individual'" class="avatar">
-                    <img
-                      v-if="getImage(item)"
-                      :src="getImage(item)"
-                      loading="lazy"
-                      decoding="async"
-                    />
-                    <span v-else>{{ getInitial(item) }}</span>
-                  </div>
-                  <div class="name-text flex items-center gap-2">
-                    <span>{{ getName(item) }}</span>
-                    <!-- Streak Badge (individual tab only) -->
-                    <span
-                      v-if="activeTab === 'individual' && item.streak >= 1"
-                      class="streak-badge"
-                      :class="{
-                        'streak-hot': item.streak >= 7,
-                        'streak-warm': item.streak >= 3 && item.streak < 7,
-                        'streak-cool': item.streak < 3,
-                      }"
-                      :title="`${item.streak} วันติดต่อกัน`"
-                    >
-                      <Flame :size="13" />
-                      {{ item.streak }}</span
-                    >
-                  </div>
+                  {{
+                    activeTab === "individual"
+                      ? langStore.t("rank_username")
+                      : langStore.t("rank_teamname")
+                  }}
                 </div>
                 <div class="col-score">
-                  <span class="score-val">{{
-                    formatDist(getDistance(item))
-                  }}</span>
-                  <span class="score-unit">{{
-                    isPoints ? langStore.t("points") : rankingUnitShort
-                  }}</span>
+                  {{ langStore.t("rank_goal_col") }}
                 </div>
               </div>
-            </TransitionGroup>
-            <div
-              v-if="!loading && !error && tableRows.length > 0"
-              class="flex justify-center pt-6 pb-6 border-t border-slate-100"
-            >
-              <AppPagination
-                :currentPage="currentPage"
-                :totalPages="hasMore ? currentPage + 1 : currentPage"
-                @change="changePage"
-              />
+              <div v-if="loading" class="loading-state">
+                <div class="spinner"></div>
+                <p>{{ langStore.t("loading_data") }}</p>
+              </div>
+              <div v-else-if="error" class="empty-state">
+                <div class="empty-icon">
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.5"
+                    width="48"
+                    height="48"
+                  >
+                    <circle cx="12" cy="12" r="9" />
+                    <path d="M12 8v4m0 4h.01" />
+                  </svg>
+                </div>
+                <p>{{ langStore.t("error_connect") }}</p>
+                <button class="retry-btn" @click="changePage(currentPage)">
+                  {{ langStore.t("retry") }}
+                </button>
+              </div>
+              <div v-else-if="tableRows.length === 0" class="empty-state">
+                <div class="empty-icon">
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.5"
+                    width="48"
+                    height="48"
+                  >
+                    <path
+                      d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"
+                    />
+                  </svg>
+                </div>
+                <p>{{ langStore.t("rank_no_data") }}</p>
+              </div>
+              <TransitionGroup
+                v-else
+                tag="div"
+                name="list-row"
+                class="list-body"
+              >
+                <div
+                  v-for="(item, idx) in tableRows"
+                  :key="item.id ?? idx"
+                  class="list-row"
+                  :data-my-rank="isCurrentUser(item) ? 'true' : null"
+                  :class="{
+                    'is-me': isCurrentUser(item),
+                    'top-3': item.rank <= 3,
+                  }"
+                  @click="handleItemClick(item)"
+                >
+                  <div class="col-rank">
+                    <span v-if="item.rank === 1" class="medal gold">1</span>
+                    <span v-else-if="item.rank === 2" class="medal silver"
+                      >2</span
+                    >
+                    <span v-else-if="item.rank === 3" class="medal bronze"
+                      >3</span
+                    >
+                    <span v-else class="rank-num">{{
+                      item.rank ||
+                      (currentPage - 1) * PAGE_SIZE + Number(idx) + 1
+                    }}</span>
+                  </div>
+                  <div class="col-name">
+                    <div v-if="activeTab === 'individual'" class="avatar">
+                      <img
+                        v-if="getImage(item)"
+                        :src="getImage(item)"
+                        loading="lazy"
+                        decoding="async"
+                      />
+                      <span v-else>{{ getInitial(item) }}</span>
+                    </div>
+                    <div class="name-text flex items-center gap-2">
+                      <span>{{ getName(item) }}</span>
+                      <!-- Streak Badge (individual tab only) -->
+                      <span
+                        v-if="activeTab === 'individual' && item.streak >= 1"
+                        class="streak-badge"
+                        :class="{
+                          'streak-hot': item.streak >= 7,
+                          'streak-warm': item.streak >= 3 && item.streak < 7,
+                          'streak-cool': item.streak < 3,
+                        }"
+                        :title="`${item.streak} วันติดต่อกัน`"
+                      >
+                        <Flame :size="13" />
+                        {{ item.streak }}</span
+                      >
+                    </div>
+                  </div>
+                  <div class="col-score">
+                    <div class="score-line">
+                      <span class="score-val">{{
+                        formatDist(getDistance(item))
+                      }}</span>
+                      <span class="score-unit">{{
+                        isPoints ? langStore.t("points") : rankingUnitShort
+                      }}</span>
+                    </div>
+                    <div v-if="getTarget(item) > 0" class="goal-line">
+                      <Check
+                        v-if="isReached(item)"
+                        :size="12"
+                        class="goal-check"
+                      />
+                      <span class="goal-target"
+                        >/ {{ formatDist(getTarget(item)) }}
+                        {{
+                          isPoints ? langStore.t("points") : rankingUnitShort
+                        }}</span
+                      >
+                    </div>
+                  </div>
+                </div>
+              </TransitionGroup>
+              <div
+                v-if="!loading && !error && tableRows.length > 0"
+                class="flex justify-center pt-6 pb-6 border-t border-slate-100"
+              >
+                <AppPagination
+                  :currentPage="currentPage"
+                  :totalPages="hasMore ? currentPage + 1 : currentPage"
+                  @change="changePage"
+                />
+              </div>
             </div>
-          </div>
+          </template>
         </main>
       </div>
     </div>
@@ -272,7 +293,15 @@
 <script setup lang="ts">
 import { ref, computed } from "vue";
 import { useRankings } from "../composables/useRankings";
-import { ChevronRight, ChevronDown, Search, X, Flame } from "lucide-vue-next";
+import {
+  ChevronRight,
+  ChevronDown,
+  Search,
+  X,
+  Flame,
+  Check,
+  Inbox,
+} from "lucide-vue-next";
 import AppPagination from "../components/common/AppPagination.vue";
 import SubmissionModal from "../components/SubmissionModal.vue";
 import MultiSelectFilter from "../components/common/MultiSelectFilter.vue";
@@ -305,6 +334,9 @@ const {
   getDistance,
   getImage,
   isCurrentUser,
+  hasJoinedActivities,
+  getTarget,
+  isReached,
   changePage,
   switchTab,
   handleItemClick,
@@ -904,7 +936,13 @@ const handleSelectActivity = (id) => {
 
 .col-score {
   display: flex;
-  justify-content: flex-end;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.score-line {
+  display: flex;
   align-items: baseline;
   gap: 4px;
 }
@@ -917,6 +955,22 @@ const handleSelectActivity = (id) => {
 .score-unit {
   font-size: 0.85rem;
   color: var(--text-muted);
+}
+
+.goal-line {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.goal-check {
+  color: #16a34a;
+}
+
+.no-joined .empty-icon {
+  color: #cbd5e1;
 }
 
 .loading-state,
