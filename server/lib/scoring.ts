@@ -5,6 +5,11 @@
 // never double-credited.
 import { pool } from "../mysql.js";
 import { decryptFields, TANITA_ENCRYPTED_FIELDS } from "./crypto.js";
+import {
+  pickStreakBonus,
+  computeStreakFromDates,
+  DAILY_MISSION_DEFAULT_TIERS,
+} from "./streakScoring.js";
 
 type Source = "daily_mission" | "assessment" | "body_comp";
 
@@ -26,11 +31,7 @@ type BodyCompCfg = Record<string, MetricRule>;
 const DEFAULTS = {
   daily_mission: {
     basePoints: 5,
-    streakTiers: [
-      { minStreak: 3, bonus: 5 },
-      { minStreak: 7, bonus: 15 },
-      { minStreak: 30, bonus: 50 },
-    ],
+    streakTiers: DAILY_MISSION_DEFAULT_TIERS,
   } as DailyMissionCfg,
   assessment: {
     bands: [
@@ -83,6 +84,24 @@ export function invalidateScoringCache() {
   cache = null;
 }
 
+/**
+ * Highest daily_mission streak-tier bonus for a given streak length, using the
+ * admin-configured tiers (master_configs) with a safe fallback to DEFAULTS.
+ * Used by the rankings leaderboard to display a per-activity streak bonus.
+ */
+export async function getStreakBonus(streak: number): Promise<number> {
+  try {
+    const map = await loadScoringConfig();
+    const c = cfg<DailyMissionCfg>(map, "daily_mission");
+    return pickStreakBonus(
+      c.streakTiers || DAILY_MISSION_DEFAULT_TIERS,
+      streak,
+    );
+  } catch {
+    return pickStreakBonus(DAILY_MISSION_DEFAULT_TIERS, streak);
+  }
+}
+
 // ── Idempotent credit ────────────────────────────────────────────────────────
 // Inserts a score_events row and, only if it was newly inserted, credits the
 // user. Returns the points actually awarded (0 if duplicate or non-positive).
@@ -131,32 +150,7 @@ async function computeStreak(userId: number): Promise<number> {
     [userId],
   );
   const dates: string[] = rows.map((r: any) => String(r.d));
-  if (dates.length === 0) return 0;
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const yesterday = new Date(today);
-  yesterday.setDate(yesterday.getDate() - 1);
-  let latest = new Date(dates[0]);
-  latest.setHours(0, 0, 0, 0);
-  if (
-    latest.getTime() !== today.getTime() &&
-    latest.getTime() !== yesterday.getTime()
-  )
-    return 0;
-  let streak = 1;
-  let current = latest;
-  for (let i = 1; i < dates.length; i++) {
-    const next = new Date(dates[i]);
-    next.setHours(0, 0, 0, 0);
-    const diff = Math.round((current.getTime() - next.getTime()) / 86400000);
-    if (diff === 1) {
-      streak++;
-      current = next;
-    } else if (diff === 0) {
-      continue;
-    } else break;
-  }
-  return streak;
+  return computeStreakFromDates(dates);
 }
 
 // ── Public award functions ───────────────────────────────────────────────────
@@ -170,10 +164,7 @@ export async function awardDailyMission(
     const map = await loadScoringConfig();
     const c = cfg<DailyMissionCfg>(map, "daily_mission");
     const streak = await computeStreak(userId);
-    let bonus = 0;
-    for (const tier of c.streakTiers || []) {
-      if (streak >= tier.minStreak) bonus = Math.max(bonus, tier.bonus);
-    }
+    const bonus = pickStreakBonus(c.streakTiers || [], streak);
     const total = (c.basePoints || 0) + bonus;
     return await credit(
       userId,
