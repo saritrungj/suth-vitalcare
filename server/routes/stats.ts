@@ -9,6 +9,8 @@ import {
   buildUserFilter,
   collectRankingFilterOptions,
 } from "../lib/rankingFilters.js";
+import { computeStreakFromDates } from "../lib/streakScoring.js";
+import { getStreakBonus } from "../lib/scoring.js";
 
 const router = express.Router();
 
@@ -79,6 +81,130 @@ async function checkManageAccess(
   } catch (error: any) {
     return res.status(500).json({ error: "Internal Server Error" });
   }
+}
+
+export interface LeaderboardRow {
+  id: number;
+  fname_th: string;
+  nickname: string;
+  picture_url: string | null;
+  role_type: string | null;
+  team_id: number | null;
+  base_points: number;
+  total_unit_value: number;
+  streak: number;
+  streak_bonus: number;
+  total_points: number; // combined score used for ordering + display
+}
+
+/**
+ * Full ranked participant list for one activity. Point-metric activities fold in
+ * the config-driven streak bonus (see spec); unit-metric activities rank by the
+ * raw unit value with no bonus. Both the paginated list endpoint and the
+ * per-user rank endpoint derive from this so score and rank always agree.
+ */
+async function computeActivityLeaderboard(
+  activityId: string | number,
+  req: express.Request,
+): Promise<{ rows: LeaderboardRow[]; isPoints: boolean; metricUnit: string }> {
+  // 1. Resolve the activity's official metric.
+  const [eventRows]: any = await pool.query(
+    "SELECT goal_config FROM events WHERE id = ?",
+    [activityId],
+  );
+  const gc = eventRows.length ? parseGoalConfig(eventRows[0].goal_config) : {};
+  const targetType = normalizeUnit(gc?.target_type || "points");
+  const metricUnit = normalizeUnit(
+    gc?.target_unit || gc?.unit || (targetType !== "points" ? targetType : ""),
+  );
+  const isPoints = !metricUnit || metricUnit === "points";
+
+  // 2. Participants (respecting role_type filters).
+  const uf = buildUserFilter(req, "u");
+  const [participants]: any = await pool.query(
+    `SELECT u.id, u.fname_th, u.nickname, u.picture_url, u.role_type, u.team_id
+       FROM registrations r JOIN users u ON r.user_id = u.id
+       WHERE r.event_id = ?${uf.sql}`,
+    [activityId, ...uf.p],
+  );
+  if (participants.length === 0) {
+    return { rows: [], isPoints, metricUnit };
+  }
+  const ids = participants.map((p: any) => p.id);
+
+  // 3. Approved submissions for those participants, scoped to the activity.
+  const [subs]: any = await pool.query(
+    `SELECT s.user_id, DATE(s.created_at) AS d,
+            t.points AS points,
+            CASE WHEN t.submission_type != 'text'
+                 AND (t.metric_unit = ? OR ? = '') THEN s.value ELSE 0 END AS unit_value
+       FROM submissions s
+       JOIN tasks t ON s.task_id = t.id
+       WHERE s.user_id IN (?) AND t.event_id = ? AND s.status = 'approved'`,
+    [metricUnit, metricUnit, ids, activityId],
+  );
+
+  const agg: Record<
+    number,
+    { base: number; unit: number; dates: Set<string> }
+  > = {};
+  for (const id of ids) agg[id] = { base: 0, unit: 0, dates: new Set() };
+  for (const s of subs) {
+    const a = agg[s.user_id];
+    if (!a) continue;
+    a.base += Number(s.points) || 0;
+    a.unit += Number(s.unit_value) || 0;
+    a.dates.add(String(s.d));
+  }
+
+  // 4. Build rows with streak + bonus.
+  const rows: LeaderboardRow[] = [];
+  for (const p of participants) {
+    const a = agg[p.id];
+    const streak = computeStreakFromDates(Array.from(a.dates));
+    const streak_bonus = isPoints ? await getStreakBonus(streak) : 0;
+    rows.push({
+      id: p.id,
+      fname_th: decrypt(p.fname_th),
+      nickname: decrypt(p.nickname),
+      picture_url: p.picture_url,
+      role_type: p.role_type,
+      team_id: p.team_id,
+      base_points: a.base,
+      total_unit_value: a.unit,
+      streak,
+      streak_bonus,
+      total_points: a.base + streak_bonus,
+    });
+  }
+
+  // 5. Sort: point metrics by combined score, unit metrics by unit value.
+  rows.sort((x, y) => {
+    const xv = isPoints ? x.total_points : x.total_unit_value;
+    const yv = isPoints ? y.total_points : y.total_unit_value;
+    if (yv !== xv) return yv - xv;
+    return x.id - y.id;
+  });
+
+  return { rows, isPoints, metricUnit };
+}
+
+interface TeamRow {
+  id: number;
+  total: number;
+}
+
+/** Aggregate the per-user leaderboard into per-team totals, sorted desc. */
+function aggregateTeams(rows: LeaderboardRow[], isPoints: boolean): TeamRow[] {
+  const byTeam: Record<number, number> = {};
+  for (const r of rows) {
+    if (r.team_id == null) continue;
+    const v = isPoints ? r.total_points : r.total_unit_value;
+    byTeam[r.team_id] = (byTeam[r.team_id] || 0) + v;
+  }
+  return Object.entries(byTeam)
+    .map(([id, total]) => ({ id: Number(id), total }))
+    .sort((a, b) => (b.total !== a.total ? b.total - a.total : a.id - b.id));
 }
 
 router.get("/summary", checkManageAccess, async (req, res) => {
