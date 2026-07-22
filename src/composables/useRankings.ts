@@ -48,6 +48,7 @@ export function useRankings() {
   const visibleActivities = computed(() => {
     return filteredActivities.value.slice(0, activityVisibleCount.value);
   });
+  const hasJoinedActivities = computed(() => allActivities.value.length > 0);
   const loadMoreActivities = () => {
     if (activityVisibleCount.value < filteredActivities.value.length) {
       activityVisibleCount.value += 20;
@@ -192,6 +193,8 @@ export function useRankings() {
     safeImageUrl(
       activeTab.value === "individual" ? item.picture_url : item.image,
     );
+  const getTarget = (item: any) => Number(item.target) || 0;
+  const isReached = (item: any) => item.reached === true;
   const isCurrentUser = (item: any) => {
     if (!authStore.user) return false;
     return activeTab.value === "individual"
@@ -202,8 +205,28 @@ export function useRankings() {
   // API Fetching Functions
   // ==========================================
   const fetchActivities = async () => {
+    const uid = authStore.user?.id;
+    if (!uid) {
+      allActivities.value = [];
+      return;
+    }
     try {
-      allActivities.value = await abortableJson("/api/activities?all=true");
+      const regs = await abortableJson<any[]>(
+        `/api/users/${uid}/registrations`,
+      );
+      allActivities.value = (regs || [])
+        .filter((r) => r.event?.id)
+        .map((r) => ({
+          id: r.event.id,
+          title: r.event.title,
+          goal_config: r.event.goal_config,
+          joined_at: r.joined_at,
+        }))
+        .sort(
+          (a, b) =>
+            new Date(b.joined_at || 0).getTime() -
+            new Date(a.joined_at || 0).getTime(),
+        );
     } catch (err) {
       if (!isAbortError(err)) {
         uiStore.toast(
@@ -300,29 +323,22 @@ export function useRankings() {
   // Interactions & Events
   // ==========================================
   const selectActivity = (id: any) => {
-    selectedActivityId.value = id ? String(id) : null;
+    if (!id) return;
+    selectedActivityId.value = String(id);
     updateUrlQuery(true); // 🌟 Use Push for activity change
     showSidebar.value = false;
-    if (id) {
-      // Find if activity exists to show it, but no longer page logic
-    }
     fetchRankings();
     fetchUserRanks();
-    if (id) {
-      const act = allActivities.value.find((a) => String(a.id) === String(id));
-      if (act) {
-        eventData.value = act;
-        const config = act.goal_config || {};
-        const unit =
-          config.target_unit ||
-          config.unit ||
-          (config.target_type !== "points" ? config.target_type : "");
-        if (unit && unit !== "points") eventDefaultUnit.value = unit;
-        else eventDefaultUnit.value = "แต้ม";
-      }
-    } else {
-      eventData.value = null;
-      eventDefaultUnit.value = "แต้ม";
+    const act = allActivities.value.find((a) => String(a.id) === String(id));
+    if (act) {
+      eventData.value = act;
+      const config = act.goal_config || {};
+      const unit =
+        config.target_unit ||
+        config.unit ||
+        (config.target_type !== "points" ? config.target_type : "");
+      if (unit && unit !== "points") eventDefaultUnit.value = unit;
+      else eventDefaultUnit.value = "แต้ม";
     }
   };
   function updateUrlQuery(isPush = false) {
@@ -476,9 +492,18 @@ export function useRankings() {
   onMounted(async () => {
     await Promise.all([fetchActivities(), fetchFilterOptions()]);
     const eid = route.query.eventId || route.query.activity_id;
-    if (eid) {
-      selectedActivityId.value = String(eid);
-      const act = allActivities.value.find((a) => String(a.id) === String(eid));
+    const joinedIds = allActivities.value.map((a) => String(a.id));
+    let chosen: string | null = null;
+    if (eid && joinedIds.includes(String(eid))) {
+      chosen = String(eid);
+    } else if (allActivities.value.length > 0) {
+      chosen = String(allActivities.value[0].id);
+    }
+    selectedActivityId.value = chosen;
+    if (chosen) {
+      const act = allActivities.value.find(
+        (a) => String(a.id) === String(chosen),
+      );
       if (act) {
         eventData.value = act;
         const config = act.goal_config || {};
@@ -487,7 +512,9 @@ export function useRankings() {
           config.unit ||
           (config.target_type !== "points" ? config.target_type : "");
         if (unit && unit !== "points") eventDefaultUnit.value = unit;
+        else eventDefaultUnit.value = "แต้ม";
       }
+      updateUrlQuery(false);
     }
     await fetchRankings();
     await fetchUserRanks();
@@ -568,6 +595,9 @@ export function useRankings() {
     getDistance,
     getImage,
     isCurrentUser,
+    hasJoinedActivities,
+    getTarget,
+    isReached,
     changePage,
     switchTab,
     loadMoreActivities,
