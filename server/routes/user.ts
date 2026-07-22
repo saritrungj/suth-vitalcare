@@ -251,9 +251,23 @@ router.post("/login-google", async (req, res) => {
 
 // ── REGISTER via Email & Password ──
 router.post("/register-email", async (req, res) => {
-  const { email, password, fname_th, captchaToken } = req.body;
-  if (!email || !password)
-    return res.status(400).json({ error: "Email and password are required" });
+  const { email, username, password, fname_th, captchaToken } = req.body;
+  // Username OR email is acceptable as the login identifier; password required.
+  if (!password || (!email && !username))
+    return res
+      .status(400)
+      .json({ error: "Username (or email) and password are required" });
+
+  // Username format (plaintext, unique). Validated before any DB work.
+  let normalizedUsername: string | null = null;
+  if (username !== undefined && username !== null && String(username) !== "") {
+    normalizedUsername = String(username).trim();
+    if (!/^[a-zA-Z0-9._-]{4,30}$/.test(normalizedUsername)) {
+      return res.status(400).json({
+        error: "ชื่อผู้ใช้ต้องมี 4-30 ตัวอักษร (a-z, A-Z, 0-9, . _ - เท่านั้น)",
+      });
+    }
+  }
 
   // 1. Verify Cloudflare Turnstile (Captcha) - Only verify if token is provided
   const secretKey = process.env.TURNSTILE_SECRET_KEY;
@@ -278,28 +292,45 @@ router.post("/register-email", async (req, res) => {
   }
 
   try {
-    // 2. Check if user already exists
-    // Since emails are encrypted with random IVs, we must fetch accounts and decrypt to compare
-    const [candidates]: any = await pool.query("SELECT id, email FROM users");
-    const { decrypt } = await import("../lib/crypto.js");
-
-    const isDuplicate = candidates.some((u: any) => {
-      const decryptedEmail = decrypt(u.email);
-      return (
-        decryptedEmail && decryptedEmail.toLowerCase() === email.toLowerCase()
+    // 2a. Username uniqueness — plaintext column with a real UNIQUE index,
+    // matched case-insensitively by the collation.
+    if (normalizedUsername) {
+      const [dupUser]: any = await pool.query(
+        "SELECT id FROM users WHERE username = ?",
+        [normalizedUsername],
       );
-    });
+      if (dupUser.length > 0) {
+        return res.status(400).json({ error: "ชื่อผู้ใช้นี้ถูกใช้งานแล้ว" });
+      }
+    }
 
-    if (isDuplicate) {
-      return res.status(400).json({ error: "อีเมลนี้ถูกใช้งานแล้ว" });
+    // 2b. Email uniqueness (only when an email is supplied).
+    // Emails are encrypted with random IVs, so we decrypt-and-compare in app.
+    if (email) {
+      const [candidates]: any = await pool.query("SELECT id, email FROM users");
+      const { decrypt } = await import("../lib/crypto.js");
+
+      const isDuplicate = candidates.some((u: any) => {
+        const decryptedEmail = decrypt(u.email);
+        return (
+          decryptedEmail && decryptedEmail.toLowerCase() === email.toLowerCase()
+        );
+      });
+
+      if (isDuplicate) {
+        return res.status(400).json({ error: "อีเมลนี้ถูกใช้งานแล้ว" });
+      }
     }
 
     // Hash password
     const salt = await bcrypt.genSalt(10);
     const password_hash = await bcrypt.hash(password, salt);
 
-    // Normal user registration
-    const newUser: any = { email, password_hash, line_id: null, role: "user" };
+    // Normal user registration. `username` stays plaintext (not in
+    // USER_ENCRYPTED_FIELDS); email (when present) gets encrypted.
+    const newUser: any = { password_hash, line_id: null, role: "user" };
+    if (email) newUser.email = email;
+    if (normalizedUsername) newUser.username = normalizedUsername;
     if (fname_th) newUser.fname_th = fname_th;
 
     const encryptedUser = encryptFields(newUser, USER_ENCRYPTED_FIELDS);
@@ -320,7 +351,7 @@ router.post("/register-email", async (req, res) => {
       req,
       userId: result.insertId,
       action: "register_email",
-      description: `ผู้ใช้สมัครสมาชิกใหม่ด้วยอีเมล: ${email}`,
+      description: `ผู้ใช้สมัครสมาชิกใหม่: ${normalizedUsername || email}`,
     });
 
     res.status(201).json(decryptFields(rows[0], USER_ENCRYPTED_FIELDS));
@@ -610,9 +641,9 @@ router.get("/:userId/registrations", async (req, res) => {
     // Join registrations, events, tasks, and leaderboards
     const [rows]: any = await pool.query(
       `
-        SELECT 
-            r.id as registration_id, r.user_id,
-            e.id as event_id, e.title as event_title, e.poster as event_poster, 
+        SELECT
+            r.id as registration_id, r.user_id, r.created_at as joined_at,
+            e.id as event_id, e.title as event_title, e.poster as event_poster,
             e.start_date, e.end_date, e.location_name,
             e.goal_config, e.team_mode, e.status as event_status,
             l.score as leaderboard_score, l.rank as leaderboard_rank,
@@ -638,6 +669,7 @@ router.get("/:userId/registrations", async (req, res) => {
             : row.goal_config || {};
         eventMap.set(row.event_id, {
           id: row.registration_id,
+          joined_at: row.joined_at,
           score: row.leaderboard_score,
           rank: row.leaderboard_rank,
           totalParticipants: row.total_participants,
@@ -1712,6 +1744,77 @@ router.post("/:id/unlink-line", requireAdmin, async (req, res) => {
   } catch (error: any) {
     console.error("LINE unlink error:", error);
     res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+// Self-service: link a LINE account to the current (username/email) user.
+// Blocks with 409 if the LINE account is already linked to a different user.
+router.post("/:id/link-line", async (req, res) => {
+  const { id } = req.params;
+  const requesterId = req.headers["x-user-id"];
+  if (!requesterId) return res.status(401).json({ error: "Unauthorized" });
+
+  try {
+    // Ownership check (Self OR Admin) — same pattern as /:id/profile
+    const [reqUserRows]: any = await pool.query(
+      "SELECT role FROM users WHERE id = ?",
+      [requesterId],
+    );
+    const requesterRole = reqUserRows[0]?.role;
+    if (String(requesterId) !== String(id) && requesterRole !== "admin") {
+      return res
+        .status(403)
+        .json({ error: "Forbidden: You cannot link this account" });
+    }
+
+    const { line_id, display_name, picture_url } = req.body;
+    if (!line_id) return res.status(400).json({ error: "line_id is required" });
+
+    const [userRows]: any = await pool.query(
+      "SELECT id FROM users WHERE id = ?",
+      [id],
+    );
+    if (userRows.length === 0) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    // Conflict: this LINE account already belongs to another user
+    const [existingLine]: any = await pool.query(
+      "SELECT id FROM users WHERE line_id = ? AND id <> ?",
+      [line_id, id],
+    );
+    if (existingLine.length > 0) {
+      return res.status(409).json({
+        error: "บัญชี LINE นี้ถูกใช้เชื่อมกับผู้ใช้อื่นแล้ว",
+      });
+    }
+
+    await pool.query(
+      "UPDATE users SET line_id = ?, line_display_name = ?, line_picture_url = ? WHERE id = ?",
+      [line_id, display_name || null, picture_url || null, id],
+    );
+
+    await logAudit({
+      req,
+      userId: id,
+      action: "link_line_self",
+      description: `ผู้ใช้เชื่อมบัญชี LINE เข้ากับบัญชีตนเอง (ID: ${id})`,
+    });
+
+    const [updated]: any = await pool.query(
+      `
+      SELECT u.*, tm.name as team_name,
+        EXISTS(SELECT 1 FROM teams t2 WHERE t2.host_id = u.id) as is_team_host
+      FROM users u
+      LEFT JOIN teams tm ON u.team_id = tm.id
+      WHERE u.id = ?
+    `,
+      [id],
+    );
+    return res.json(decryptFields(updated[0], USER_ENCRYPTED_FIELDS));
+  } catch (error: any) {
+    console.error("LINE link error:", error);
+    return res.status(500).json({ error: "Internal Server Error" });
   }
 });
 
