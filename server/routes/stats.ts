@@ -238,11 +238,24 @@ export interface UserActivityScore {
   adjustment: number;
   score: number;
   is_points: boolean;
+  missions?: {
+    submission_id: number;
+    task_name: string;
+    date: string;
+    points: number;
+  }[];
+  adjustments?: {
+    id: number;
+    points: number;
+    reason: string | null;
+    created_at: string;
+  }[];
 }
 
 /** Per-activity points breakdown for one user across their joined activities. */
 async function computeUserActivityScores(
   userId: string | number,
+  detail = false,
 ): Promise<{ total: number; activities: UserActivityScore[] }> {
   const [regs]: any = await pool.query(
     `SELECT e.id AS event_id, e.title, e.goal_config
@@ -271,6 +284,48 @@ async function computeUserActivityScores(
     for (const b of bonusRows) bonusByEvent[b.event_id] = Number(b.net) || 0;
   } catch (e: any) {
     if (e.code !== "ER_NO_SUCH_TABLE") throw e;
+  }
+
+  // Optional drill-down data: the rows that make up base_points and adjustment.
+  const missionsByEvent: Record<number, any[]> = {};
+  const adjustmentsByEvent: Record<number, any[]> = {};
+  if (detail) {
+    const [mrows]: any = await pool.query(
+      `SELECT s.id AS submission_id, t.event_id AS event_id,
+              COALESCE(NULLIF(t.note, ''), t.type, 'ภารกิจ') AS task_name,
+              DATE(s.created_at) AS date, t.points AS points
+         FROM submissions s JOIN tasks t ON s.task_id = t.id
+        WHERE s.user_id = ? AND t.event_id IN (?) AND s.status = 'approved'
+        ORDER BY s.created_at DESC`,
+      [userId, eventIds],
+    );
+    for (const m of mrows) {
+      (missionsByEvent[m.event_id] ||= []).push({
+        submission_id: m.submission_id,
+        task_name: m.task_name,
+        date: String(m.date),
+        points: Number(m.points) || 0,
+      });
+    }
+    try {
+      const [arows]: any = await pool.query(
+        `SELECT id, event_id, points, reason, created_at
+           FROM bonus_points
+          WHERE user_id = ? AND event_id IN (?)
+          ORDER BY created_at DESC`,
+        [userId, eventIds],
+      );
+      for (const a of arows) {
+        (adjustmentsByEvent[a.event_id] ||= []).push({
+          id: a.id,
+          points: Number(a.points) || 0,
+          reason: a.reason,
+          created_at: String(a.created_at),
+        });
+      }
+    } catch (e: any) {
+      if (e.code !== "ER_NO_SUCH_TABLE") throw e;
+    }
   }
 
   const agg: Record<number, { base: number; dates: Set<string> }> = {};
@@ -310,6 +365,12 @@ async function computeUserActivityScores(
       adjustment,
       score,
       is_points: isPoints,
+      ...(detail
+        ? {
+            missions: missionsByEvent[reg.event_id] || [],
+            adjustments: adjustmentsByEvent[reg.event_id] || [],
+          }
+        : {}),
     });
   }
   const total = sumTotal(activities.map((x) => x.score));
@@ -331,7 +392,8 @@ router.get("/user/:userId/activity-scores", async (req, res) => {
     if (!isSelf && role !== "admin" && role !== "host") {
       return res.status(403).json({ error: "Forbidden" });
     }
-    const data = await computeUserActivityScores(userId);
+    const detail = req.query.detail === "1" || req.query.detail === "true";
+    const data = await computeUserActivityScores(userId, detail);
     res.json(data);
   } catch (error: any) {
     console.error("[activity-scores] error:", error);
