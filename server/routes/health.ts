@@ -3,6 +3,8 @@ import crypto from "crypto";
 import { pool } from "../mysql.js";
 import { decrypt } from "../lib/crypto.js";
 import { awardAssessment } from "../lib/scoring.js";
+import { logAudit } from "../lib/audit.js";
+import { requireAdmin } from "../middleware/auth.js";
 
 const router = express.Router();
 
@@ -310,6 +312,115 @@ router.get("/my-assessments/:userId", async (req, res) => {
   } catch (e: any) {
     if (e.code === "ER_NO_SUCH_TABLE") return res.json([]);
     res.status(500).json({ error: e.message });
+  }
+});
+
+// Granular answers for one health assessment (self or admin/host).
+router.get("/assessments/:id/answers", async (req, res) => {
+  const requesterId = req.headers["x-user-id"];
+  const { id } = req.params;
+  if (!requesterId) return res.status(401).json({ error: "Unauthorized" });
+  try {
+    const [ownerRows]: any = await pool.query(
+      "SELECT user_id FROM health_assessments WHERE id = ?",
+      [id],
+    );
+    if (ownerRows.length === 0)
+      return res.status(404).json({ error: "Assessment not found" });
+
+    const [reqRows]: any = await pool.query(
+      "SELECT role FROM users WHERE id = ?",
+      [requesterId],
+    );
+    const role = reqRows[0]?.role;
+    const isSelf = String(requesterId) === String(ownerRows[0].user_id);
+    if (!isSelf && role !== "admin" && role !== "host") {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+
+    const [rows]: any = await pool.query(
+      "SELECT id, question_text, answer_text, score FROM assessment_answers WHERE health_assessment_id = ?",
+      [id],
+    );
+    res.json(rows);
+  } catch (e: any) {
+    if (e.code === "ER_NO_SUCH_TABLE") return res.json([]);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+// Admin: update a health assessment (scores + granular answers).
+router.put("/assessments/:id", requireAdmin, async (req, res) => {
+  const { id } = req.params;
+  const adminId = req.headers["x-user-id"] as string;
+  const { totalScore, overallLevel, sectionScores, granularAnswers } = req.body;
+
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+
+    const [exists]: any = await connection.query(
+      "SELECT id, user_id FROM health_assessments WHERE id = ? FOR UPDATE",
+      [id],
+    );
+    if (exists.length === 0) {
+      await connection.rollback();
+      return res.status(404).json({ error: "Assessment not found" });
+    }
+
+    await connection.query(
+      "UPDATE health_assessments SET total_score = ?, overall_level = ?, summary_json = ? WHERE id = ?",
+      [
+        Number(totalScore) || 0,
+        overallLevel || null,
+        JSON.stringify(sectionScores || []),
+        id,
+      ],
+    );
+
+    if (Array.isArray(granularAnswers)) {
+      await connection.query(
+        "DELETE FROM assessment_answers WHERE health_assessment_id = ?",
+        [id],
+      );
+      if (granularAnswers.length > 0) {
+        const placeholders: string[] = [];
+        const values: any[] = [];
+        for (const a of granularAnswers) {
+          placeholders.push("(?, ?, ?, ?)");
+          values.push(
+            id,
+            a.question_text || "",
+            a.answer_text || "",
+            Number(a.score) || 0,
+          );
+        }
+        await connection.query(
+          `INSERT INTO assessment_answers (health_assessment_id, question_text, answer_text, score) VALUES ${placeholders.join(", ")}`,
+          values,
+        );
+      }
+    }
+
+    await connection.commit();
+
+    await logAudit({
+      req,
+      userId: adminId,
+      action: "admin_update_assessment",
+      targetType: "health_assessment",
+      targetId: id,
+      description: `แอดมินแก้ไขผลประเมินสุขภาพ ID: ${id} (ผู้ใช้ ${exists[0].user_id})`,
+      metadata: { totalScore, overallLevel },
+    });
+
+    res.json({ success: true });
+  } catch (error: any) {
+    await connection.rollback();
+    console.error("[update assessment] error:", error);
+    res.status(500).json({ error: "Internal Server Error" });
+  } finally {
+    connection.release();
   }
 });
 
