@@ -11,6 +11,20 @@ const router = express.Router();
 
 router.post("/", async (req, res) => {
   try {
+    const requesterId = req.headers["x-user-id"];
+    if (!requesterId) return res.status(401).json({ error: "Unauthorized" });
+    const [reqRows]: any = await pool.query(
+      "SELECT role FROM users WHERE id = ?",
+      [requesterId],
+    );
+    const requesterRole = reqRows[0]?.role;
+    const isAdmin = requesterRole === "admin";
+    if (!isAdmin && String(requesterId) !== String(req.body.user_id)) {
+      return res
+        .status(403)
+        .json({ error: "Forbidden: cannot create record for another user" });
+    }
+
     const p = req.body;
 
     // 1. Helpers for robust data handling
@@ -236,6 +250,40 @@ router.patch("/:id", async (req, res) => {
   } catch (error) {
     console.error("Update Tanita error:", error);
     res.status(500).json({ error: "Failed to update Tanita data" });
+  }
+});
+
+// Admin/self: delete a tanita record.
+router.delete("/:id", async (req, res) => {
+  const requesterId = req.headers["x-user-id"];
+  const { id } = req.params;
+  if (!requesterId) return res.status(401).json({ error: "Unauthorized" });
+
+  try {
+    const [reqRows]: any = await pool.query(
+      "SELECT role FROM users WHERE id = ?",
+      [requesterId],
+    );
+    const requesterRole = reqRows[0]?.role;
+    const [targetRows]: any = await pool.query(
+      "SELECT user_id FROM tanita WHERE id = ?",
+      [id],
+    );
+    if (targetRows.length === 0)
+      return res.status(404).json({ error: "Record not found" });
+
+    const ownerId = targetRows[0].user_id;
+    if (String(requesterId) !== String(ownerId) && requesterRole !== "admin") {
+      return res
+        .status(403)
+        .json({ error: "Forbidden: You cannot delete this record" });
+    }
+
+    await pool.query("DELETE FROM tanita WHERE id = ?", [id]);
+    res.json({ success: true, message: "Tanita record deleted" });
+  } catch (error) {
+    console.error("Delete Tanita error:", error);
+    res.status(500).json({ error: "Failed to delete Tanita data" });
   }
 });
 
