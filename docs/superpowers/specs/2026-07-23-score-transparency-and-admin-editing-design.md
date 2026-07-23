@@ -137,7 +137,10 @@ so the admin form and the user flow agree; unit-tested.
   `src/lib/healthAssessment.ts`: the `sections` array (id, label, shortLabel,
   maxScore, layout, gridHeaders, scoringRanges, questions[{id, text, options[{text,
   shortLabel, score}]}]) plus pure helpers `scoreSection(section, answers)`,
-  `levelForSection(section, score)`, `overallLevelFor(total)`. `Health.vue` imports
+  `levelForSection(section, score)`, `overallLevelFromSectionLevels(levels)`.
+  Note: the overall level is the **worst** section level
+  (ควรปรับปรุง > พอใช้ > ดี > ดีมาก), not a function of the total score —
+  this mirrors `Health.vue`'s existing `overallLevel` computed. `Health.vue` imports
   from it (no behavior change); the admin editor imports the same module so both
   score identically.
 - **Backend**:
@@ -180,7 +183,8 @@ sectionScores, granularAnswers }`; updates `health_assessments`
 Repo has no DB/component harness (only pure `tsx` tests), so:
 
 - **Pure unit tests:** `encodeMissionValue`/`metricModeForTask`
-  (`src/lib/missionValue.ts`) and `scoreSection`/`levelForSection`/`overallLevelFor`
+  (`src/lib/missionValue.ts`) and
+  `scoreSection`/`levelForSection`/`overallLevelFromSectionLevels`
   (`src/lib/healthAssessment.ts`) — including boundary scores at each
   `scoringRanges` edge.
 - **Typecheck:** `npm run lint` after each task.
