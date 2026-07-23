@@ -1,7 +1,11 @@
 <script setup lang="ts">
 import { ref, watch, reactive } from "vue";
+import { useRoute } from "vue-router";
 import { Save, Loader2, Coins, Plus } from "lucide-vue-next";
+import PointsBreakdownModal from "../../common/PointsBreakdownModal.vue";
 const props = defineProps<{ ctx: any }>();
+const route = useRoute();
+const showBreakdown = ref(false);
 
 // Global (shop/legacy) points override — unchanged behavior.
 const points = ref(0);
@@ -47,9 +51,12 @@ const applyAdjustment = async (eventId: number) => {
           <Coins :size="18" class="text-orange-500" />
           <span class="text-sm font-bold">คะแนนรายกิจกรรม</span>
         </div>
-        <div class="text-sm font-black text-orange-600">
+        <button
+          @click="showBreakdown = true"
+          class="text-sm font-black text-orange-600 underline decoration-dotted underline-offset-4 hover:text-orange-700"
+        >
           รวม {{ ctx.scoreTotal.value.toLocaleString() }} คะแนน
-        </div>
+        </button>
       </div>
 
       <div v-if="ctx.activityScores.value.length" class="flex flex-col gap-3">
@@ -139,5 +146,10 @@ const applyAdjustment = async (eventId: number) => {
         <Save v-else :size="18" /> บันทึกคะแนนระบบ
       </button>
     </div>
+    <PointsBreakdownModal
+      :open="showBreakdown"
+      :user-id="Number(route.params.id)"
+      @close="showBreakdown = false"
+    />
   </div>
 </template>

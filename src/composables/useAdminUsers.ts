@@ -229,6 +229,8 @@ export function useAdminUsers() {
   const editForm = ref<any>({});
   const editTanita = ref<any>({});
   const viewTanita = ref<any>({});
+  const viewScoreTotal = ref(0);
+  const showBreakdown = ref(false);
   const banReason = ref("");
   const banType = ref<"suspend" | "ban">("ban");
   const submitting = ref(false);
@@ -265,6 +267,21 @@ export function useAdminUsers() {
     { immediate: true },
   );
 
+  const loadViewScoreTotal = async (userId: number) => {
+    viewScoreTotal.value = 0;
+    try {
+      const r = await fetch(`/api/stats/user/${userId}/activity-scores`, {
+        headers: { "x-user-id": String(authStore.user?.id) },
+      });
+      if (r.ok) {
+        const d = await r.json();
+        viewScoreTotal.value = d.total || 0;
+      }
+    } catch {
+      /* silent */
+    }
+  };
+
   const setupModalData = (
     type: "edit" | "ban" | "view" | "enroll",
     user: any,
@@ -275,6 +292,7 @@ export function useAdminUsers() {
       fetchAllActivities();
     }
     if (type === "view" || type === "edit") {
+      if (type === "view") loadViewScoreTotal(user.id);
       editTanita.value = {};
       viewTanita.value = {};
       fetch(`/api/tanita/user/${user.id}`, {
@@ -861,6 +879,8 @@ export function useAdminUsers() {
     editForm,
     editTanita,
     viewTanita,
+    viewScoreTotal,
+    showBreakdown,
     banReason,
     banType,
     submitting,

@@ -1049,10 +1049,13 @@
                     <span class="my-scores-label">{{
                       langStore.t("points_label")
                     }}</span>
-                    <span class="my-scores-total"
-                      >{{ scoreTotal.toLocaleString() }}
-                      {{ langStore.t("points") }}</span
+                    <button
+                      class="my-scores-total my-scores-total-btn"
+                      @click="showBreakdown = true"
                     >
+                      {{ scoreTotal.toLocaleString() }}
+                      {{ langStore.t("points") }}
+                    </button>
                   </div>
                   <div class="my-scores-list">
                     <div
@@ -1862,6 +1865,11 @@
         </div>
       </Transition>
     </Teleport>
+    <PointsBreakdownModal
+      :open="showBreakdown"
+      :user-id="user?.id ?? null"
+      @close="showBreakdown = false"
+    />
   </div>
 </template>
 <script setup>
@@ -1930,8 +1938,10 @@ import MissionCalendar from "../components/MissionCalendar.vue";
 import ProfileDashboard from "../components/ProfileDashboard.vue";
 import HealthOverviewDashboard from "../components/health/HealthOverviewDashboard.vue";
 import LanguageMenu from "../components/common/LanguageMenu.vue";
+import PointsBreakdownModal from "../components/common/PointsBreakdownModal.vue";
 const router = useRouter();
 const user = computed(() => authStore.user);
+const showBreakdown = ref(false);
 
 // ── LINE account linking (สำหรับผู้ใช้ที่สมัครด้วย username) ─────────────────
 const isLineLinked = computed(() => !!user.value?.line_id);
@@ -4915,6 +4925,15 @@ onUnmounted(() => {
   font-size: 1.25rem;
   font-weight: 800;
   color: #f05a23;
+}
+.my-scores-total-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: underline dotted;
+  text-underline-offset: 4px;
+  font-family: inherit;
 }
 .my-scores-list {
   display: flex;

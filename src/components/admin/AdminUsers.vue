@@ -36,6 +36,7 @@ import {
 import { useRouter } from "vue-router";
 import { useAdminUsers } from "../../composables/useAdminUsers";
 import { authStore } from "../../store/auth";
+import PointsBreakdownModal from "../common/PointsBreakdownModal.vue";
 import Swal from "sweetalert2";
 const router = useRouter();
 // ดึงตัวแปรและฟังก์ชันทั้งหมดมาจาก Composable
@@ -63,6 +64,8 @@ const {
   editForm,
   editTanita,
   viewTanita,
+  viewScoreTotal,
+  showBreakdown,
   banReason,
   banType,
   submitting,
@@ -1536,11 +1539,6 @@ const handleBulkLeaveConfirm = async () => {
                             : '',
                       },
                       {
-                        label: 'คะแนนสะสมรวม',
-                        val: target.total_score || '0.00',
-                      },
-                      { label: 'แต้ม (Points)', val: target.points || '0' },
-                      {
                         label: 'วันที่เริ่มใช้งานระบบ',
                         val: fmtDate(target.created_at),
                       },
@@ -1560,6 +1558,29 @@ const handleBulkLeaveConfirm = async () => {
                       "
                       >{{ field.val || "ไม่ระบุ" }}</span
                     >
+                  </div>
+                  <div
+                    class="sm:col-span-2 flex flex-wrap items-baseline gap-x-8 gap-y-3 pt-2"
+                  >
+                    <div class="flex items-baseline gap-2">
+                      <span class="text-slate-700 text-[13px] font-bold"
+                        >คะแนนสะสมรวม (กิจกรรม):</span
+                      >
+                      <button
+                        @click="showBreakdown = true"
+                        class="text-orange-600 text-base font-bold underline decoration-dotted underline-offset-4 hover:text-orange-700"
+                      >
+                        {{ viewScoreTotal.toLocaleString() }}
+                      </button>
+                    </div>
+                    <div class="flex items-baseline gap-2">
+                      <span class="text-slate-700 text-[13px] font-bold"
+                        >แต้ม (Points) — ใช้ในร้านค้า:</span
+                      >
+                      <span class="text-slate-800 text-base">{{
+                        target.points || 0
+                      }}</span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -2669,6 +2690,11 @@ const handleBulkLeaveConfirm = async () => {
         </div>
       </transition>
     </teleport>
+    <PointsBreakdownModal
+      :open="showBreakdown"
+      :user-id="target?.id ?? null"
+      @close="showBreakdown = false"
+    />
   </div>
 </template>
 <style scoped>
