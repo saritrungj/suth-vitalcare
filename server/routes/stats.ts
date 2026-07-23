@@ -12,6 +12,7 @@ import {
 import { computeStreakFromDates } from "../lib/streakScoring.js";
 import { getStreakBonus } from "../lib/scoring.js";
 import { combineActivityScore, sumTotal } from "../lib/activityScore.js";
+import { requireAdmin } from "../middleware/auth.js";
 
 const router = express.Router();
 
@@ -334,6 +335,104 @@ router.get("/user/:userId/activity-scores", async (req, res) => {
     res.json(data);
   } catch (error: any) {
     console.error("[activity-scores] error:", error);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+/** Per-user, per-activity points for every user (for CSV export). */
+async function computeAllUsersActivityScores(): Promise<{
+  activities: { event_id: number; title: string }[];
+  users: { user_id: number; total: number; scores: Record<number, number> }[];
+}> {
+  const [evRows]: any = await pool.query(
+    `SELECT DISTINCT e.id AS event_id, e.title, e.goal_config
+       FROM events e JOIN registrations r ON r.event_id = e.id
+       ORDER BY e.id ASC`,
+  );
+  const eventMeta: Record<number, { isPoints: boolean }> = {};
+  for (const e of evRows) {
+    const gc = parseGoalConfig(e.goal_config);
+    const tt = normalizeUnit(gc?.target_type || "points");
+    const mu = normalizeUnit(
+      gc?.target_unit || gc?.unit || (tt !== "points" ? tt : ""),
+    );
+    eventMeta[e.event_id] = { isPoints: !mu || mu === "points" };
+  }
+
+  const [regs]: any = await pool.query(
+    `SELECT user_id, event_id FROM registrations`,
+  );
+  const [subs]: any = await pool.query(
+    `SELECT s.user_id, t.event_id, DATE(s.created_at) AS d, t.points AS points
+       FROM submissions s JOIN tasks t ON s.task_id = t.id
+       WHERE s.status = 'approved'`,
+  );
+  let bonus: any[] = [];
+  try {
+    const [b]: any = await pool.query(
+      `SELECT user_id, event_id, COALESCE(SUM(points), 0) AS net
+         FROM bonus_points GROUP BY user_id, event_id`,
+    );
+    bonus = b;
+  } catch (e: any) {
+    if (e.code !== "ER_NO_SUCH_TABLE") throw e;
+  }
+
+  const key = (u: number, e: number) => `${u}_${e}`;
+  const baseMap: Record<string, { base: number; dates: Set<string> }> = {};
+  for (const r of regs)
+    baseMap[key(r.user_id, r.event_id)] = { base: 0, dates: new Set() };
+  for (const s of subs) {
+    const m = baseMap[key(s.user_id, s.event_id)];
+    if (!m) continue;
+    m.base += Number(s.points) || 0;
+    m.dates.add(String(s.d));
+  }
+  const bonusMap: Record<string, number> = {};
+  for (const b of bonus)
+    bonusMap[key(b.user_id, b.event_id)] = Number(b.net) || 0;
+
+  const users: Record<
+    number,
+    { total: number; scores: Record<number, number> }
+  > = {};
+  for (const r of regs) {
+    const k = key(r.user_id, r.event_id);
+    const m = baseMap[k];
+    const meta = eventMeta[r.event_id];
+    const streak = computeStreakFromDates(Array.from(m.dates));
+    const streakBonus = meta?.isPoints ? await getStreakBonus(streak) : 0;
+    const adjustment = bonusMap[k] || 0;
+    const score = combineActivityScore({
+      base: m.base,
+      streakBonus,
+      adjustment,
+    });
+    if (!users[r.user_id]) users[r.user_id] = { total: 0, scores: {} };
+    users[r.user_id].scores[r.event_id] = score;
+    users[r.user_id].total += score;
+  }
+
+  return {
+    activities: evRows.map((e: any) => ({
+      event_id: e.event_id,
+      title: e.title,
+    })),
+    users: Object.entries(users).map(([uid, v]) => ({
+      user_id: Number(uid),
+      total: v.total,
+      scores: v.scores,
+    })),
+  };
+}
+
+// Bulk per-activity scores for CSV export (admin only).
+router.get("/scores/export", requireAdmin, async (_req, res) => {
+  try {
+    const data = await computeAllUsersActivityScores();
+    res.json(data);
+  } catch (error: any) {
+    console.error("[scores/export] error:", error);
     res.status(500).json({ error: "Internal Server Error" });
   }
 });
