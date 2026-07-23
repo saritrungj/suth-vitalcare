@@ -283,6 +283,8 @@
     <SubmissionModal
       :open="showSubmissionModal"
       :user="selectedUser"
+      :score-row="activeTab === 'individual' ? selectedUser : null"
+      :is-points="isPoints"
       :activity-id="selectedActivityId"
       :unit-short="rankingUnitShort"
       @close="closeSubmissionModal"

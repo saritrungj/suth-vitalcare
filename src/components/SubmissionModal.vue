@@ -28,6 +28,29 @@
           </button>
         </header>
 
+        <div v-if="scoreRow" class="sm-score">
+          <div class="sm-score-top">
+            <span class="sm-score-label">คะแนนในกิจกรรมนี้</span>
+            <span class="sm-score-val">
+              {{
+                Number(
+                  isPoints
+                    ? (scoreRow.total_points ?? 0)
+                    : (scoreRow.total_unit_value ?? 0),
+                ).toLocaleString()
+              }}
+              <span class="sm-score-unit">{{
+                isPoints ? "คะแนน" : unitShort
+              }}</span>
+            </span>
+          </div>
+          <p v-if="isPoints" class="sm-score-formula">
+            ภารกิจ {{ scoreRow.base_points ?? 0 }} + streak
+            {{ scoreRow.streak_bonus ?? 0 }} ({{ scoreRow.streak ?? 0 }} วัน) +
+            ปรับ {{ scoreRow.adjustment ?? 0 }}
+          </p>
+        </div>
+
         <!-- Body -->
         <div class="sm-body">
           <div v-if="loading" class="sm-loading">
@@ -125,6 +148,8 @@ const props = defineProps<{
   user: any;
   activityId: string | null;
   unitShort?: string;
+  scoreRow?: any;
+  isPoints?: boolean;
 }>();
 
 defineEmits<{ (e: "close"): void }>();
@@ -264,6 +289,37 @@ const formatDate = (val: any) => {
   gap: 0.75rem;
   padding: 1rem 1.25rem;
   border-bottom: 1px solid #f1f5f9;
+}
+.sm-score {
+  padding: 0.75rem 1.25rem;
+  background: #fff7ed;
+  border-bottom: 1px solid #ffedd5;
+}
+.sm-score-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.sm-score-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #9a3412;
+}
+.sm-score-val {
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: #ea580c;
+}
+.sm-score-unit {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #c2410c;
+}
+.sm-score-formula {
+  margin: 0.25rem 0 0;
+  font-size: 0.7rem;
+  color: #b45309;
 }
 .sm-user {
   display: flex;
