@@ -11,6 +11,7 @@ import {
 } from "../lib/rankingFilters.js";
 import { computeStreakFromDates } from "../lib/streakScoring.js";
 import { getStreakBonus } from "../lib/scoring.js";
+import { combineActivityScore, sumTotal } from "../lib/activityScore.js";
 
 const router = express.Router();
 
@@ -94,6 +95,7 @@ export interface LeaderboardRow {
   total_unit_value: number;
   streak: number;
   streak_bonus: number;
+  adjustment: number;
   total_points: number; // combined score used for ordering + display
 }
 
@@ -157,12 +159,26 @@ async function computeActivityLeaderboard(
     a.dates.add(String(s.d));
   }
 
+  // 3b. Net admin adjustments (bonus_points) per user for this activity.
+  const bonusByUser: Record<number, number> = {};
+  try {
+    const [bonusRows]: any = await pool.query(
+      `SELECT user_id, COALESCE(SUM(points), 0) AS net
+         FROM bonus_points WHERE event_id = ? AND user_id IN (?) GROUP BY user_id`,
+      [activityId, ids],
+    );
+    for (const b of bonusRows) bonusByUser[b.user_id] = Number(b.net) || 0;
+  } catch (e: any) {
+    if (e.code !== "ER_NO_SUCH_TABLE") throw e;
+  }
+
   // 4. Build rows with streak + bonus.
   const rows: LeaderboardRow[] = [];
   for (const p of participants) {
     const a = agg[p.id];
     const streak = computeStreakFromDates(Array.from(a.dates));
     const streak_bonus = isPoints ? await getStreakBonus(streak) : 0;
+    const adjustment = bonusByUser[p.id] || 0;
     rows.push({
       id: p.id,
       fname_th: decrypt(p.fname_th),
@@ -174,7 +190,12 @@ async function computeActivityLeaderboard(
       total_unit_value: a.unit,
       streak,
       streak_bonus,
-      total_points: a.base + streak_bonus,
+      adjustment,
+      total_points: combineActivityScore({
+        base: a.base,
+        streakBonus: streak_bonus,
+        adjustment,
+      }),
     });
   }
 
