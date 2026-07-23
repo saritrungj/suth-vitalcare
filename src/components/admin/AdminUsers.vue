@@ -33,9 +33,11 @@ import {
   UserPlus,
   Loader2,
 } from "lucide-vue-next";
+import { useRouter } from "vue-router";
 import { useAdminUsers } from "../../composables/useAdminUsers";
 import { authStore } from "../../store/auth";
 import Swal from "sweetalert2";
+const router = useRouter();
 // ดึงตัวแปรและฟังก์ชันทั้งหมดมาจาก Composable
 const {
   roleTypes,
@@ -1206,6 +1208,18 @@ const handleBulkLeaveConfirm = async () => {
                 <Eye :size="16" />
               </div>
               ดูรายละเอียด
+            </button>
+            <button
+              @click="
+                router.push('/admin/users/' + activeMenuUser.id);
+                localActiveMenuId = null;
+              "
+              class="w-full px-4 py-2.5 text-left text-sm font-bold text-slate-700 hover:bg-orange-50 hover:text-orange-600 transition-colors flex items-center gap-3"
+            >
+              <div class="p-1.5 bg-slate-50 rounded-lg text-slate-500">
+                <Pencil :size="16" />
+              </div>
+              จัดการข้อมูลทั้งหมด
             </button>
             <button
               @click="

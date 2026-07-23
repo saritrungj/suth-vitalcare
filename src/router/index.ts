@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from "vue-router";
 import { watch } from "vue";
 import { authStore } from "../store/auth";
+import { setRedirectAfterLogin, consumeSafeRedirect } from "../lib/redirect";
 // แก้ปัญหา 404 โดยการ Import ตรงๆ (Static Import) สำหรับหน้าที่ Tunnel โหลดไม่ได้
 import EventDetail from "../views/EventDetail.vue";
 import Missions from "../views/Missions.vue";
@@ -78,6 +79,16 @@ const routes = [
     },
   },
   {
+    path: "/admin/users/:id",
+    name: "AdminUserDetail",
+    component: () => import("../views/AdminUserDetail.vue"),
+    meta: {
+      title: "จัดการข้อมูลสมาชิก",
+      hideNavbar: true,
+      requiresAdmin: true,
+    },
+  },
+  {
     path: "/create-teams",
     name: "CreateTeams",
     component: () => import("../views/CreateTeams.vue"),
@@ -147,7 +158,7 @@ router.beforeEach(async (to, from, next) => {
   const userAfterLoad = authStore.user;
   if (!userAfterLoad && !isLoggingIn && !isRegistering && !isResetting) {
     if (to.fullPath !== "/") {
-      sessionStorage.setItem("redirect_after_login", to.fullPath);
+      setRedirectAfterLogin(to.fullPath);
     }
     return next({ name: "Login" });
   }
@@ -161,16 +172,7 @@ router.beforeEach(async (to, from, next) => {
     }
   }
   if (userAfterLoad && isLoggingIn) {
-    const savedRedirect = sessionStorage.getItem("redirect_after_login");
-    sessionStorage.removeItem("redirect_after_login");
-    // Only allow internal, root-relative paths (block protocol-relative `//evil`
-    // and absolute external URLs) to prevent open-redirect.
-    const isSafeRedirect =
-      typeof savedRedirect === "string" &&
-      savedRedirect.startsWith("/") &&
-      !savedRedirect.startsWith("//");
-    const destination = isSafeRedirect ? (savedRedirect as string) : "/";
-    return next(destination);
+    return next(consumeSafeRedirect());
   }
   if (userAfterLoad && !isRegistering && !isLoggingIn) {
     if (userAfterLoad.role !== "admin") {
