@@ -857,6 +857,70 @@ router.patch("/:id/unban", requireAdmin, async (req, res) => {
   }
 });
 
+// Admin: directly set a user's points / total_score (manual override).
+router.patch("/:id/points", requireAdmin, async (req, res) => {
+  const { id } = req.params;
+  const adminId = req.headers["x-user-id"] as string;
+  const { points, total_score } = req.body;
+
+  const toNonNegInt = (v: any) => {
+    if (v === undefined || v === null || v === "") return undefined;
+    const n = Math.round(Number(v));
+    return isNaN(n) ? undefined : Math.max(0, n);
+  };
+  const p = toNonNegInt(points);
+  const ts = toNonNegInt(total_score);
+  if (p === undefined && ts === undefined) {
+    return res.status(400).json({ error: "No valid points values provided" });
+  }
+
+  try {
+    const [rows]: any = await pool.query(
+      "SELECT points, total_score FROM users WHERE id = ?",
+      [id],
+    );
+    if (rows.length === 0)
+      return res.status(404).json({ error: "User not found" });
+    const before = { points: rows[0].points, total_score: rows[0].total_score };
+
+    const sets: string[] = [];
+    const vals: any[] = [];
+    if (p !== undefined) {
+      sets.push("points = ?");
+      vals.push(p);
+    }
+    if (ts !== undefined) {
+      sets.push("total_score = ?");
+      vals.push(ts);
+    }
+    await pool.query(`UPDATE users SET ${sets.join(", ")} WHERE id = ?`, [
+      ...vals,
+      id,
+    ]);
+
+    await logAudit({
+      req,
+      userId: adminId,
+      action: "admin_set_points",
+      targetType: "user",
+      targetId: id,
+      description: `แอดมินปรับคะแนนผู้ใช้ ID: ${id}`,
+      metadata: { before, after: { points: p, total_score: ts } },
+    });
+
+    getIO().emit(EVENTS.USER_UPDATED, {
+      id: Number(id),
+      ...(p !== undefined ? { points: p } : {}),
+      ...(ts !== undefined ? { total_score: ts } : {}),
+    });
+
+    res.json({ success: true, points: p, total_score: ts });
+  } catch (error: any) {
+    console.error("[admin set points] error:", error);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
 // 3.1 Admin: Get Full User Profile for Dashboard
 router.get("/:id/full-profile", requireAdmin, async (req, res) => {
   const { id } = req.params;
