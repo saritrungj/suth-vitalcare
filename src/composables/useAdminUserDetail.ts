@@ -69,6 +69,52 @@ export function useAdminUserDetail(userId: number) {
     }
   };
 
+  /** Tasks of one activity, for the add-mission task picker. */
+  const fetchActivityTasks = async (eventId: number): Promise<any[]> => {
+    try {
+      const r = await fetch(`${API}/activities/${eventId}`, {
+        headers: headers(false),
+      });
+      if (!r.ok) return [];
+      const d = await r.json();
+      return d.tasks || [];
+    } catch {
+      return [];
+    }
+  };
+
+  /** Upload a proof image; returns the stored URL (same endpoint the user flow uses). */
+  const uploadProofImage = async (
+    file: File,
+    taskLabel = "mission",
+  ): Promise<string | null> => {
+    try {
+      const params = new URLSearchParams({
+        type: "submissions",
+        name: taskLabel,
+      });
+      const formData = new FormData();
+      formData.append("image", file);
+      const r = await fetch(
+        `${API.replace(/\/api$/, "")}/api/upload?${params}`,
+        {
+          method: "POST",
+          headers: { "x-user-id": String(authStore.user?.id || "") },
+          body: formData,
+        },
+      );
+      if (!r.ok) {
+        const e = await r.json().catch(() => ({}));
+        throw new Error(e.error || "อัปโหลดรูปไม่สำเร็จ");
+      }
+      const d = await r.json();
+      return d.url || null;
+    } catch (e: any) {
+      showError(e.message || "อัปโหลดรูปไม่สำเร็จ");
+      return null;
+    }
+  };
+
   // ── Profile ────────────────────────────────────────────────
   const saveProfile = async (form: any) => {
     submitting.value = true;
@@ -333,6 +379,8 @@ export function useAdminUserDetail(userId: number) {
     saveProfile,
     savePoints,
     backdateSubmit,
+    fetchActivityTasks,
+    uploadProofImage,
     editSubmission,
     setSubmissionStatus,
     deleteSubmission,
