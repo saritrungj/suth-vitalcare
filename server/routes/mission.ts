@@ -4,6 +4,8 @@ import { decrypt } from "../lib/crypto.js";
 import { getIO, EVENTS } from "../lib/realtime.js";
 import { logAudit } from "../lib/audit.js";
 import { awardDailyMission } from "../lib/scoring.js";
+import { requireAdmin } from "../middleware/auth.js";
+import { toMysqlDateTime, dayOf } from "../lib/adminSubmission.js";
 
 const router = express.Router();
 
@@ -191,7 +193,8 @@ router.post("/submit", async (req, res) => {
 // Note: This does NOT add points again to prevent duplication.
 router.patch("/submission/:id", async (req, res) => {
   const { id } = req.params;
-  const { value, imageUrl, textResponse, note, activity_type } = req.body;
+  const { value, imageUrl, textResponse, note, activity_type, created_at } =
+    req.body;
 
   const connection = await pool.getConnection();
   try {
@@ -203,17 +206,32 @@ router.patch("/submission/:id", async (req, res) => {
     );
     const oldSub = subRows[0];
 
-    await connection.query(
-      `UPDATE submissions SET value = ?, img_url = ?, text_response = ?, comment = ?, activity_type = ? WHERE id = ?`,
-      [
-        value,
-        imageUrl,
-        textResponse || null,
-        note,
-        activity_type || "exercise",
-        id,
-      ],
-    );
+    if (created_at) {
+      await connection.query(
+        `UPDATE submissions SET value = ?, img_url = ?, text_response = ?, comment = ?, activity_type = ?, created_at = ? WHERE id = ?`,
+        [
+          value,
+          imageUrl,
+          textResponse || null,
+          note,
+          activity_type || "exercise",
+          toMysqlDateTime(created_at),
+          id,
+        ],
+      );
+    } else {
+      await connection.query(
+        `UPDATE submissions SET value = ?, img_url = ?, text_response = ?, comment = ?, activity_type = ? WHERE id = ?`,
+        [
+          value,
+          imageUrl,
+          textResponse || null,
+          note,
+          activity_type || "exercise",
+          id,
+        ],
+      );
+    }
 
     // Editing a submission no longer updates points to prevent accidental additions/subtractions on points
     // if value changes. Points are fixed per task.
@@ -662,6 +680,139 @@ router.delete("/submission/:id", async (req, res) => {
     res.json({ success: true });
   } catch (error: any) {
     await connection.rollback();
+    res.status(500).json({ error: "Internal Server Error" });
+  } finally {
+    connection.release();
+  }
+});
+
+// Admin: create a submission on behalf of a user, optionally backdated.
+router.post("/admin/submit", requireAdmin, async (req, res) => {
+  const adminId = req.headers["x-user-id"] as string;
+  const {
+    userId,
+    taskId,
+    value,
+    imageUrl,
+    textResponse,
+    activity_type,
+    proof_type,
+    status,
+    created_at,
+  } = req.body;
+
+  if (!userId || !taskId) {
+    return res.status(400).json({ error: "userId and taskId are required" });
+  }
+  const finalStatus = ["approved", "pending", "rejected"].includes(status)
+    ? status
+    : "approved";
+  const mysqlDate = toMysqlDateTime(created_at);
+  const day = dayOf(mysqlDate);
+
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+
+    // Idempotency by calendar day of the (possibly backdated) submission.
+    const [existing]: any = await connection.query(
+      `SELECT id FROM submissions WHERE user_id = ? AND task_id = ? AND DATE(created_at) = ? LIMIT 1`,
+      [userId, taskId, day],
+    );
+    if (existing.length > 0) {
+      await connection.rollback();
+      return res.status(409).json({
+        error: "มีการส่งภารกิจนี้ในวันดังกล่าวแล้ว",
+        submissionId: existing[0].id,
+      });
+    }
+
+    const approvedAt = finalStatus === "approved" ? mysqlDate : null;
+    const approvedBy = finalStatus === "approved" ? adminId : null;
+    const [result]: any = await connection.query(
+      `INSERT INTO submissions
+        (user_id, task_id, value, img_url, text_response, status,
+         activity_type, proof_type, approved_by, approved_at, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        userId,
+        taskId,
+        value || 0,
+        imageUrl || null,
+        textResponse || null,
+        finalStatus,
+        activity_type || "exercise",
+        proof_type || "manual",
+        approvedBy,
+        approvedAt,
+        mysqlDate,
+      ],
+    );
+    const insertId = result.insertId;
+
+    const [taskRows]: any = await connection.query(
+      "SELECT points, event_id FROM tasks WHERE id = ?",
+      [taskId],
+    );
+    const task = taskRows[0] || null;
+
+    if (finalStatus === "approved" && task?.points) {
+      await connection.query(
+        "UPDATE users SET points = points + ?, total_score = total_score + ? WHERE id = ?",
+        [task.points, task.points, userId],
+      );
+      if (task.event_id) {
+        const [lb]: any = await connection.query(
+          "SELECT id FROM event_leaderboards WHERE event_id = ? AND user_id = ?",
+          [task.event_id, userId],
+        );
+        if (lb.length > 0) {
+          await connection.query(
+            "UPDATE event_leaderboards SET score = score + ? WHERE id = ?",
+            [task.points, lb[0].id],
+          );
+        } else {
+          await connection.query(
+            "INSERT INTO event_leaderboards (event_id, user_id, score, `rank`) VALUES (?, ?, ?, 0)",
+            [task.event_id, userId, task.points],
+          );
+        }
+      }
+    }
+
+    await connection.commit();
+
+    // Config-driven daily-mission scoring keyed on the chosen day (idempotent).
+    if (finalStatus === "approved") {
+      awardDailyMission(Number(userId), day).catch(() => {});
+    }
+
+    await logAudit({
+      req,
+      userId: adminId,
+      action: "admin_backdate_submission",
+      targetType: "submission",
+      targetId: insertId,
+      description: `แอดมินเพิ่มภารกิจ (task ${taskId}) ให้ผู้ใช้ ${userId} วันที่ ${day}`,
+      metadata: {
+        userId,
+        taskId,
+        value,
+        status: finalStatus,
+        created_at: mysqlDate,
+      },
+    });
+
+    const [rows]: any = await pool.query(
+      `SELECT s.*, t.event_id as activity_id FROM submissions s JOIN tasks t ON s.task_id = t.id WHERE s.id = ?`,
+      [insertId],
+    );
+    getIO().emit(EVENTS.SUBMISSION_CREATED, rows[0]);
+
+    res.json({ success: true, submissionId: insertId });
+  } catch (error: any) {
+    await connection.rollback();
+    console.error("[admin submit] error:", error);
     res.status(500).json({ error: "Internal Server Error" });
   } finally {
     connection.release();
