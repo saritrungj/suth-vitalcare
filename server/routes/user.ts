@@ -909,11 +909,46 @@ router.get("/:id/full-profile", requireAdmin, async (req, res) => {
       [id],
     );
 
+    // E. Health assessments (self-assessments) — newest first
+    let assessments: any[] = [];
+    try {
+      const [aRows]: any = await pool.query(
+        `SELECT id, user_id, total_score, overall_level, admin_comment,
+                commented_at, commented_by, created_at, summary_json
+           FROM health_assessments
+          WHERE user_id = ?
+          ORDER BY created_at DESC`,
+        [id],
+      );
+      assessments = aRows;
+    } catch (e: any) {
+      if (e.code !== "ER_NO_SUCH_TABLE") throw e;
+    }
+
+    // F. Event pre/post test scores, joined to event titles
+    let assessmentSubmissions: any[] = [];
+    try {
+      const [asRows]: any = await pool.query(
+        `SELECT asub.id, asub.event_id, asub.test_type, asub.total_score,
+                asub.submitted_at, e.title AS event_title
+           FROM assessment_submissions asub
+           LEFT JOIN events e ON asub.event_id = e.id
+          WHERE asub.user_id = ?
+          ORDER BY asub.submitted_at DESC`,
+        [id],
+      );
+      assessmentSubmissions = asRows;
+    } catch (e: any) {
+      if (e.code !== "ER_NO_SUCH_TABLE") throw e;
+    }
+
     res.json({
       user,
       submissions: subRows,
       healthHistory: healthDecrypted,
       registrations: regRows,
+      assessments,
+      assessmentSubmissions,
     });
   } catch (error: any) {
     console.error("[full-profile error]", error);
