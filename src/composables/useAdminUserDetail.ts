@@ -21,6 +21,8 @@ export function useAdminUserDetail(userId: number) {
   const registrations = ref<any[]>([]);
   const assessments = ref<any[]>([]);
   const assessmentSubmissions = ref<any[]>([]);
+  const activityScores = ref<any[]>([]);
+  const scoreTotal = ref(0);
 
   const displayName = computed(() =>
     user.value
@@ -44,10 +46,26 @@ export function useAdminUserDetail(userId: number) {
       registrations.value = d.registrations || [];
       assessments.value = d.assessments || [];
       assessmentSubmissions.value = d.assessmentSubmissions || [];
+      await loadActivityScores();
     } catch (e: any) {
       showError(e.message || "เกิดข้อผิดพลาด");
     } finally {
       loading.value = false;
+    }
+  };
+
+  const loadActivityScores = async () => {
+    try {
+      const r = await fetch(`${API}/stats/user/${userId}/activity-scores`, {
+        headers: headers(false),
+      });
+      if (r.ok) {
+        const d = await r.json();
+        activityScores.value = d.activities || [];
+        scoreTotal.value = d.total || 0;
+      }
+    } catch {
+      /* silent */
     }
   };
 
@@ -87,6 +105,33 @@ export function useAdminUserDetail(userId: number) {
           (await r.json().catch(() => ({}))).error || "บันทึกคะแนนไม่สำเร็จ",
         );
       showSuccess("ปรับคะแนนสำเร็จ");
+      await load();
+    } catch (e: any) {
+      showError(e.message);
+    } finally {
+      submitting.value = false;
+    }
+  };
+
+  const addAdjustment = async (
+    eventId: number,
+    points: number,
+    reason: string,
+  ) => {
+    if (!points) return;
+    submitting.value = true;
+    try {
+      const r = await fetch(`${API}/activities/${eventId}/bonus-points`, {
+        method: "POST",
+        headers: headers(),
+        body: JSON.stringify({ user_id: userId, points, reason }),
+      });
+      if (!r.ok)
+        throw new Error(
+          (await r.json().catch(() => ({}))).error || "ปรับคะแนนไม่สำเร็จ",
+        );
+      showSuccess("ปรับคะแนนรายกิจกรรมสำเร็จ");
+      await loadActivityScores();
       await load();
     } catch (e: any) {
       showError(e.message);
@@ -279,6 +324,10 @@ export function useAdminUserDetail(userId: number) {
     registrations,
     assessments,
     assessmentSubmissions,
+    activityScores,
+    scoreTotal,
+    loadActivityScores,
+    addAdjustment,
     displayName,
     load,
     saveProfile,
