@@ -742,26 +742,61 @@ export function useAdminUsers() {
   ];
 
   // ── Export ────────────────────────────────────────────────
-  const exportCSV = () => {
-    const data =
+  const exportCSV = async () => {
+    const selected =
       selectedIds.value.length > 0
         ? filtered.value.filter((u: any) => selectedIds.value.includes(u.id))
         : filtered.value;
-    const rows = data.map((u) => [
-      u.id,
-      displayName(u),
-      u.email || "",
-      u.phone || "",
-      u.role,
-      statusLabel(u),
-      fmtDate(u.created_at),
-    ]);
-    const csv = [
-      ["ID", "ชื่อ", "อีเมล", "โทรศัพท์", "สิทธิ์", "สถานะ", "วันสมัคร"],
-      ...rows,
-    ]
-      .map((r) => r.join(","))
-      .join("\n");
+
+    // Canonical per-activity scores (total + per-activity), keyed by user id.
+    let activities: { event_id: number; title: string }[] = [];
+    const scoreByUser: Record<
+      number,
+      { total: number; scores: Record<number, number> }
+    > = {};
+    try {
+      const r = await fetch("/api/stats/scores/export", {
+        headers: { "x-user-id": String(authStore.user?.id) },
+      });
+      if (r.ok) {
+        const d = await r.json();
+        activities = d.activities || [];
+        for (const u of d.users || []) scoreByUser[u.user_id] = u;
+      }
+    } catch {
+      /* fall back to no score columns */
+    }
+
+    const header = [
+      "ID",
+      "ชื่อ",
+      "อีเมล",
+      "โทรศัพท์",
+      "สิทธิ์",
+      "สถานะ",
+      "วันสมัคร",
+      "คะแนนรวม (กิจกรรม)",
+      ...activities.map((a) => a.title),
+    ];
+    const rows = selected.map((u) => {
+      const s = scoreByUser[u.id];
+      return [
+        u.id,
+        displayName(u),
+        u.email || "",
+        u.phone || "",
+        u.role,
+        statusLabel(u),
+        fmtDate(u.created_at),
+        s ? s.total : 0,
+        ...activities.map((a) => (s ? s.scores[a.event_id] || 0 : 0)),
+      ];
+    });
+    const esc = (v: any) => {
+      const str = String(v ?? "");
+      return /[",\n]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
+    };
+    const csv = [header, ...rows].map((r) => r.map(esc).join(",")).join("\n");
     const blob = new Blob(["\uFEFF" + csv], {
       type: "text/csv;charset=utf-8;",
     });
@@ -771,7 +806,7 @@ export function useAdminUsers() {
     a.download = `users_${new Date().toISOString().split("T")[0]}.csv`;
     a.click();
     URL.revokeObjectURL(url);
-    showSuccess(`Export ${data.length} รายการสำเร็จ`);
+    showSuccess(`Export ${selected.length} รายการสำเร็จ`);
   };
 
   // ── Close menu on outside click ──────────────────────────
