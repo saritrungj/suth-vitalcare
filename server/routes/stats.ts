@@ -228,6 +228,116 @@ function aggregateTeams(rows: LeaderboardRow[], isPoints: boolean): TeamRow[] {
     .sort((a, b) => (b.total !== a.total ? b.total - a.total : a.id - b.id));
 }
 
+export interface UserActivityScore {
+  event_id: number;
+  title: string;
+  base_points: number;
+  streak: number;
+  streak_bonus: number;
+  adjustment: number;
+  score: number;
+  is_points: boolean;
+}
+
+/** Per-activity points breakdown for one user across their joined activities. */
+async function computeUserActivityScores(
+  userId: string | number,
+): Promise<{ total: number; activities: UserActivityScore[] }> {
+  const [regs]: any = await pool.query(
+    `SELECT e.id AS event_id, e.title, e.goal_config
+       FROM registrations r JOIN events e ON r.event_id = e.id
+       WHERE r.user_id = ?
+       ORDER BY r.created_at DESC`,
+    [userId],
+  );
+  if (regs.length === 0) return { total: 0, activities: [] };
+  const eventIds = regs.map((r: any) => r.event_id);
+
+  const [subs]: any = await pool.query(
+    `SELECT t.event_id AS event_id, DATE(s.created_at) AS d, t.points AS points
+       FROM submissions s JOIN tasks t ON s.task_id = t.id
+       WHERE s.user_id = ? AND t.event_id IN (?) AND s.status = 'approved'`,
+    [userId, eventIds],
+  );
+
+  const bonusByEvent: Record<number, number> = {};
+  try {
+    const [bonusRows]: any = await pool.query(
+      `SELECT event_id, COALESCE(SUM(points), 0) AS net
+         FROM bonus_points WHERE user_id = ? AND event_id IN (?) GROUP BY event_id`,
+      [userId, eventIds],
+    );
+    for (const b of bonusRows) bonusByEvent[b.event_id] = Number(b.net) || 0;
+  } catch (e: any) {
+    if (e.code !== "ER_NO_SUCH_TABLE") throw e;
+  }
+
+  const agg: Record<number, { base: number; dates: Set<string> }> = {};
+  for (const id of eventIds) agg[id] = { base: 0, dates: new Set() };
+  for (const s of subs) {
+    const a = agg[s.event_id];
+    if (!a) continue;
+    a.base += Number(s.points) || 0;
+    a.dates.add(String(s.d));
+  }
+
+  const activities: UserActivityScore[] = [];
+  for (const reg of regs) {
+    const gc = parseGoalConfig(reg.goal_config);
+    const targetType = normalizeUnit(gc?.target_type || "points");
+    const metricUnit = normalizeUnit(
+      gc?.target_unit ||
+        gc?.unit ||
+        (targetType !== "points" ? targetType : ""),
+    );
+    const isPoints = !metricUnit || metricUnit === "points";
+    const a = agg[reg.event_id];
+    const streak = computeStreakFromDates(Array.from(a.dates));
+    const streakBonus = isPoints ? await getStreakBonus(streak) : 0;
+    const adjustment = bonusByEvent[reg.event_id] || 0;
+    const score = combineActivityScore({
+      base: a.base,
+      streakBonus,
+      adjustment,
+    });
+    activities.push({
+      event_id: reg.event_id,
+      title: reg.title,
+      base_points: a.base,
+      streak,
+      streak_bonus: streakBonus,
+      adjustment,
+      score,
+      is_points: isPoints,
+    });
+  }
+  const total = sumTotal(activities.map((x) => x.score));
+  return { total, activities };
+}
+
+// Per-user activity score breakdown (self or admin/host).
+router.get("/user/:userId/activity-scores", async (req, res) => {
+  const requesterId = req.headers["x-user-id"];
+  const { userId } = req.params;
+  if (!requesterId) return res.status(401).json({ error: "Unauthorized" });
+  try {
+    const [reqRows]: any = await pool.query(
+      "SELECT role FROM users WHERE id = ?",
+      [requesterId],
+    );
+    const role = reqRows[0]?.role;
+    const isSelf = String(requesterId) === String(userId);
+    if (!isSelf && role !== "admin" && role !== "host") {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+    const data = await computeUserActivityScores(userId);
+    res.json(data);
+  } catch (error: any) {
+    console.error("[activity-scores] error:", error);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
 router.get("/summary", checkManageAccess, async (req, res) => {
   const userId = req.headers["x-user-id"] as string;
   let totalHealthRecords = 0;
