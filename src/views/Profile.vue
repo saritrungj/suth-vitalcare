@@ -434,6 +434,52 @@
                 </div>
               </div>
               <div v-if="activeTab === 'contact'" class="tab-content">
+                <!-- เชื่อมบัญชี LINE (สำหรับผู้ใช้ที่สมัครด้วย username) -->
+                <div class="line-link-card" v-if="!editing">
+                  <div class="line-link-info">
+                    <svg
+                      class="line-link-icon"
+                      viewBox="0 0 24 24"
+                      fill="#00C300"
+                      width="26"
+                      height="26"
+                    >
+                      <path
+                        d="M22 10.4c0-4.3-4.5-7.8-10-7.8S2 6.1 2 10.4c0 3.8 3.5 7.1 8 7.7.3.1.8.2.9.5.1.2.1.6 0 1l-.3 1.8c0 .1-.1.4.3.6.4.2.9-.1 1.2-.3 1.1-.9 6.2-3.8 8.1-6.1.8-1 1.8-2.6 1.8-5.2zM8.3 12.6H5.9c-.3 0-.6-.3-.6-.6V8.6c0-.3.3-.6.6-.6s.6.3.6.6v2.8h1.8c.3 0 .6.3.6.6s-.3.6-.6.6zm3.3 0h-1.2c-.3 0-.6-.3-.6-.6V8.6c0-.3.3-.6.6-.6s.6.3.6.6v3.4c0 .3-.3.6-.6.6zm4.8 0h-1.2l-1.9-2.7v2.2c0 .3-.3.6-.6.6s-.6-.3-.6-.6V8.6c0-.3.3-.6.6-.6h1.2l1.9 2.7V8.6c0-.3.3-.6.6-.6s.6.3.6.6v3.4c0 .3-.2.6-.6.6z"
+                      />
+                    </svg>
+                    <div class="line-link-texts">
+                      <div class="line-link-title">LINE</div>
+                      <div class="line-link-sub" v-if="isLineLinked">
+                        {{ langStore.t("line_linked") }}
+                      </div>
+                      <div class="line-link-sub muted" v-else>
+                        {{
+                          langStore.locale === "th"
+                            ? "ยังไม่ได้เชื่อมบัญชี LINE"
+                            : "LINE account not linked"
+                        }}
+                      </div>
+                    </div>
+                  </div>
+                  <div class="line-link-action">
+                    <span v-if="isLineLinked" class="line-linked-badge">
+                      <Check :size="16" /> {{ langStore.t("line_linked") }}
+                    </span>
+                    <button
+                      v-else
+                      class="btn-link-line"
+                      :disabled="isLinkingLine"
+                      @click="linkLineAccount"
+                    >
+                      <span
+                        v-if="isLinkingLine"
+                        class="loader small mr-2"
+                      ></span>
+                      {{ langStore.t("link_line_account") }}
+                    </button>
+                  </div>
+                </div>
                 <div
                   class="shopee-f-row"
                   v-for="f in contactFields"
@@ -998,6 +1044,29 @@
                 </div>
               </div>
               <div v-if="activeTab === 'events'" class="tab-content">
+                <div class="my-scores-card">
+                  <div class="my-scores-head">
+                    <span class="my-scores-label">{{
+                      langStore.t("points_label")
+                    }}</span>
+                    <span class="my-scores-total"
+                      >{{ scoreTotal.toLocaleString() }}
+                      {{ langStore.t("points") }}</span
+                    >
+                  </div>
+                  <div class="my-scores-list">
+                    <div
+                      v-for="a in activityScores"
+                      :key="a.event_id"
+                      class="my-scores-row"
+                    >
+                      <span class="my-scores-name">{{ a.title }}</span>
+                      <span class="my-scores-val">{{
+                        a.score.toLocaleString()
+                      }}</span>
+                    </div>
+                  </div>
+                </div>
                 <div v-if="registrations.length" class="events-grid-wrapper">
                   <div class="flat-grid">
                     <div
@@ -1840,12 +1909,15 @@ import {
   Flame,
   Dumbbell,
   ClipboardList,
+  Check,
 } from "lucide-vue-next";
 import Swal from "sweetalert2";
 import { authStore } from "../store/auth";
 import { uiStore } from "../store/ui";
 import { langStore } from "../store/lang";
-import { logoutLiff } from "../lib/liff";
+import liff from "@line/liff";
+import { logoutLiff, startLineLogin } from "../lib/liff";
+import { clientLog } from "../lib/clientLog";
 import { useFavorites } from "../composables/useFavorites";
 import CustomSelect from "../components/CustomSelect.vue";
 import {
@@ -1860,6 +1932,103 @@ import HealthOverviewDashboard from "../components/health/HealthOverviewDashboar
 import LanguageMenu from "../components/common/LanguageMenu.vue";
 const router = useRouter();
 const user = computed(() => authStore.user);
+
+// ── LINE account linking (สำหรับผู้ใช้ที่สมัครด้วย username) ─────────────────
+const isLineLinked = computed(() => !!user.value?.line_id);
+const isLinkingLine = ref(false);
+const LINK_LINE_INTENT_KEY = "link_line_intent";
+
+// เริ่มเชื่อม LINE: ถ้า LIFF ล็อกอินอยู่แล้ว (เช่นเปิดใน LINE) เชื่อมได้เลย
+// ไม่งั้นตั้ง intent แล้วเข้าสู่ LINE OAuth (ผ่าน circuit-breaker guard) แล้ว
+// กลับมาทำต่อใน completeLineLinkIfPending()
+const linkLineAccount = async () => {
+  if (isLinkingLine.value || isLineLinked.value) return;
+  let loggedIn = false;
+  try {
+    loggedIn = liff.isLoggedIn();
+  } catch {
+    loggedIn = false;
+  }
+  if (!loggedIn) {
+    sessionStorage.setItem(LINK_LINE_INTENT_KEY, "1");
+    startLineLogin();
+    return;
+  }
+  await completeLineLink();
+};
+
+// เรียก backend ผูก line_id เข้ากับบัญชีปัจจุบัน (409 ถ้า LINE ถูกใช้กับบัญชีอื่น)
+const completeLineLink = async () => {
+  const currentUser = authStore.user;
+  if (!currentUser?.id) return;
+  isLinkingLine.value = true;
+  try {
+    const profile = await liff.getProfile();
+    const API_URL = import.meta.env.VITE_API_URL || "/api";
+    const res = await fetch(`${API_URL}/users/${currentUser.id}/link-line`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-user-id": String(currentUser.id),
+      },
+      body: JSON.stringify({
+        line_id: profile.userId,
+        display_name: profile.displayName,
+        picture_url: profile.pictureUrl,
+      }),
+    });
+    if (res.ok) {
+      const updated = await res.json();
+      authStore.setUser(updated);
+      uiStore.toast(
+        "success",
+        "เชื่อมบัญชี LINE สำเร็จ",
+        "คุณสามารถเข้าสู่ระบบด้วย LINE ได้แล้ว",
+      );
+    } else {
+      const err = await res.json().catch(() => ({}));
+      clientLog("backend_login_failed", {
+        status: res.status,
+        message: err?.error || "link failed",
+        context: "link-line",
+      });
+      uiStore.showAlert(
+        "error",
+        "เชื่อมบัญชี LINE ไม่สำเร็จ",
+        err?.error || "ไม่สามารถเชื่อมบัญชี LINE ได้ กรุณาลองใหม่อีกครั้ง",
+      );
+    }
+  } catch (e) {
+    uiStore.showAlert(
+      "error",
+      "เชื่อมบัญชี LINE ไม่สำเร็จ",
+      "ไม่สามารถอ่านข้อมูลจาก LINE ได้ กรุณาลองใหม่อีกครั้ง",
+    );
+  } finally {
+    isLinkingLine.value = false;
+  }
+};
+
+// หลังกลับจาก LINE OAuth: รอ LIFF init (main.ts เรียกแบบ async) ให้เสร็จก่อน
+// แล้วถ้าล็อกอินสำเร็จจึงเชื่อมต่อให้จบ
+const completeLineLinkIfPending = async () => {
+  if (sessionStorage.getItem(LINK_LINE_INTENT_KEY) !== "1") return;
+  try {
+    await Promise.race([
+      liff.ready,
+      new Promise((resolve) => setTimeout(resolve, 8000)),
+    ]);
+  } catch {}
+  sessionStorage.removeItem(LINK_LINE_INTENT_KEY);
+  if (isLineLinked.value) return;
+  let loggedIn = false;
+  try {
+    loggedIn = liff.isLoggedIn();
+  } catch {
+    loggedIn = false;
+  }
+  if (loggedIn) await completeLineLink();
+};
 const isMobileScreen = ref(true);
 const activeTab = ref(null);
 const isSidebarVisible = ref(true);
@@ -2055,6 +2224,8 @@ const {
   eventsTotalPages,
   paginatedEvents,
   liveTotalPoints,
+  activityScores,
+  scoreTotal,
   fetchTeamData,
   fetchEventsData,
   getActivityStatus,
@@ -2204,6 +2375,8 @@ onMounted(() => {
   fetchTanitaData();
   fetchFavorites();
   fetchEventsData();
+  // ทำการเชื่อม LINE ต่อให้เสร็จ ถ้าเพิ่งกลับมาจาก LINE OAuth
+  completeLineLinkIfPending();
 });
 onUnmounted(() => {
   window.removeEventListener("resize", checkScreen);
@@ -2247,6 +2420,71 @@ onUnmounted(() => {
 .icon-btn-toggle:hover {
   background: #f1f5f9;
   color: #f05a23;
+}
+.line-link-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+}
+.line-link-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.line-link-texts {
+  display: flex;
+  flex-direction: column;
+}
+.line-link-title {
+  font-weight: 700;
+  color: #1e293b;
+  font-size: 15px;
+}
+.line-link-sub {
+  font-size: 13px;
+  color: #16a34a;
+  font-weight: 600;
+}
+.line-link-sub.muted {
+  color: #94a3b8;
+  font-weight: 500;
+}
+.line-linked-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #16a34a;
+  font-weight: 700;
+  font-size: 14px;
+}
+.btn-link-line {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 18px;
+  background: #06c755;
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: filter 0.2s;
+}
+.btn-link-line:hover {
+  filter: brightness(0.95);
+}
+.btn-link-line:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 .app-wrap {
   min-height: 100vh;
@@ -4654,6 +4892,50 @@ onUnmounted(() => {
   .stat-label {
     font-size: 0.6rem;
   }
+}
+.my-scores-card {
+  border: 1px solid #eef0f3;
+  border-radius: 16px;
+  padding: 16px;
+  margin-bottom: 16px;
+  background: #fff;
+}
+.my-scores-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.my-scores-label {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #94a3b8;
+}
+.my-scores-total {
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: #f05a23;
+}
+.my-scores-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.my-scores-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.85rem;
+  color: #475569;
+}
+.my-scores-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-right: 12px;
+}
+.my-scores-val {
+  font-weight: 700;
+  flex-shrink: 0;
 }
 </style>
 <style>

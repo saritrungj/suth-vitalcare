@@ -2,6 +2,8 @@ import { ref, computed, watch } from "vue";
 export function useProfileEvents(user, activeTabRef) {
   const registrations = ref([]);
   const userSubmissions = ref([]);
+  const activityScores = ref([]);
+  const scoreTotal = ref(0);
   const isEventsLoaded = ref(false);
   const team = ref(null);
   const memberCount = ref(0);
@@ -36,11 +38,8 @@ export function useProfileEvents(user, activeTabRef) {
       }
     });
   }
-  const liveTotalPoints = computed(() => {
-    return userSubmissions.value
-      .filter((s) => s.status === "approved")
-      .reduce((sum, s) => sum + (s.tasks?.points || 0), 0);
-  });
+  // Canonical total = sum of per-activity scores (base + streak bonus + adjustment).
+  const liveTotalPoints = computed(() => scoreTotal.value);
 
   const selectedEventId = ref(null);
 
@@ -427,6 +426,23 @@ export function useProfileEvents(user, activeTabRef) {
       });
       if (subRes.ok) userSubmissions.value = await subRes.json();
       isEventsLoaded.value = true;
+      fetchActivityScores();
+    } catch {}
+  }
+  async function fetchActivityScores() {
+    if (!user.value?.id) return;
+    try {
+      const r = await fetch(
+        `/api/stats/user/${user.value.id}/activity-scores`,
+        {
+          headers: { "x-user-id": String(user.value.id) },
+        },
+      );
+      if (r.ok) {
+        const d = await r.json();
+        activityScores.value = d.activities || [];
+        scoreTotal.value = d.total || 0;
+      }
     } catch {}
   }
   const getActivityStatus = (act) => {
@@ -479,12 +495,10 @@ export function useProfileEvents(user, activeTabRef) {
     return days <= 0 ? "วันสุดท้าย" : `เหลืออีก ${days} วัน`;
   }
   function getEventScore(eventId) {
-    return userSubmissions.value
-      .filter((s) => {
-        const subEvId = s.tasks?.event_id || s.event_id || s.activity_id;
-        return Number(subEvId) === Number(eventId) && s.status === "approved";
-      })
-      .reduce((sum, s) => sum + (s.tasks?.points || 0), 0);
+    const found = activityScores.value.find(
+      (a) => Number(a.event_id) === Number(eventId),
+    );
+    return found ? found.score : 0;
   }
   function hasGoal(event) {
     return event.goal_config?.enabled && event.goal_config?.target_value;
@@ -652,6 +666,9 @@ export function useProfileEvents(user, activeTabRef) {
     eventsTotalPages,
     paginatedEvents,
     liveTotalPoints,
+    activityScores,
+    scoreTotal,
+    fetchActivityScores,
     selectedEventId,
     calendarDays,
     calMonthLabel,
