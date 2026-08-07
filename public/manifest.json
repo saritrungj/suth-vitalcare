@@ -1,0 +1,26 @@
+{
+  "name": "VitalCare",
+  "short_name": "VitalCare",
+  "description": "VitalCare — ระบบกิจกรรมสุขภาพและภารกิจสะสมคะแนน",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#ffffff",
+  "theme_color": "#ff6a00",
+  "lang": "th",
+  "icons": [
+    {
+      "src": "/logo.png",
+      "sizes": "600x600",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/logo.png",
+      "sizes": "600x600",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

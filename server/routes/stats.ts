@@ -211,21 +211,77 @@ async function computeActivityLeaderboard(
   return { rows, isPoints, metricUnit };
 }
 
-interface TeamRow {
+export interface TeamMemberRow {
   id: number;
-  total: number;
+  name: string;
+  picture_url: string | null;
+  /** Contribution in the activity's ranking metric — this is what sums to the team total. */
+  score: number;
+  /** Canonical activity points, kept separate so unit-metric activities can show both. */
+  points: number;
+  unit_value: number;
+  streak: number;
 }
 
-/** Aggregate the per-user leaderboard into per-team totals, sorted desc. */
+interface TeamRow {
+  id: number;
+  /** Team total in the ranking metric (drives ordering). */
+  total: number;
+  total_points: number;
+  total_unit_value: number;
+  base_points: number;
+  streak_bonus: number;
+  adjustment: number;
+  members: TeamMemberRow[];
+}
+
+/**
+ * Aggregate the per-user leaderboard into per-team totals, sorted desc.
+ *
+ * Every metric is summed independently: a unit-metric activity ranks teams by
+ * the summed unit value, but its points column must still show the summed
+ * *points* — folding the two together made teams report their step count as a
+ * score. The members that produced each total ride along so the UI can show who
+ * contributed what without a second round-trip.
+ */
 function aggregateTeams(rows: LeaderboardRow[], isPoints: boolean): TeamRow[] {
-  const byTeam: Record<number, number> = {};
+  const byTeam: Record<number, Omit<TeamRow, "id">> = {};
   for (const r of rows) {
     if (r.team_id == null) continue;
-    const v = isPoints ? r.total_points : r.total_unit_value;
-    byTeam[r.team_id] = (byTeam[r.team_id] || 0) + v;
+    const t = (byTeam[r.team_id] ||= {
+      total: 0,
+      total_points: 0,
+      total_unit_value: 0,
+      base_points: 0,
+      streak_bonus: 0,
+      adjustment: 0,
+      members: [],
+    });
+    const score = isPoints ? r.total_points : r.total_unit_value;
+    t.total += score;
+    t.total_points += r.total_points;
+    t.total_unit_value += r.total_unit_value;
+    t.base_points += r.base_points;
+    t.streak_bonus += r.streak_bonus;
+    t.adjustment += r.adjustment;
+    t.members.push({
+      id: r.id,
+      name: r.nickname || r.fname_th || "สมาชิก",
+      picture_url: r.picture_url,
+      score,
+      points: r.total_points,
+      unit_value: r.total_unit_value,
+      streak: r.streak,
+    });
   }
   return Object.entries(byTeam)
-    .map(([id, total]) => ({ id: Number(id), total }))
+    .map(([id, t]) => ({
+      ...t,
+      id: Number(id),
+      members: t.members.sort((a, b) =>
+        b.score !== a.score ? b.score - a.score : a.id - b.id,
+      ),
+    }))
     .sort((a, b) => (b.total !== a.total ? b.total - a.total : a.id - b.id));
 }
 
@@ -1150,10 +1206,18 @@ router.get("/rankings/:type", async (req, res) => {
     }
 
     if (activityId && type === "team") {
-      const { rows, isPoints } = await computeActivityLeaderboard(
+      const { rows, isPoints, metricUnit } = await computeActivityLeaderboard(
         activityId as string,
         req,
       );
+      const [evRows]: any = await pool.query(
+        "SELECT goal_config FROM events WHERE id = ?",
+        [activityId],
+      );
+      const gc = evRows.length ? parseGoalConfig(evRows[0].goal_config) : {};
+      const perMemberTarget = Number(gc?.target_value) || 0;
+      const targetType = normalizeUnit(gc?.target_type || "points");
+
       const teams = aggregateTeams(rows, isPoints);
       const slice = teams.slice(offset, offset + limit);
       if (slice.length === 0) return res.json([]);
@@ -1165,14 +1229,29 @@ router.get("/rankings/:type", async (req, res) => {
       const metaById: Record<number, any> = {};
       for (const m of teamMeta) metaById[m.id] = m;
       return res.json(
-        slice.map((t) => ({
-          id: t.id,
-          name: metaById[t.id]?.name,
-          code: metaById[t.id]?.code,
-          image: metaById[t.id]?.image,
-          total_points: t.total,
-          total_unit_value: t.total,
-        })),
+        slice.map((t) => {
+          // The configured goal is per participant, so a team's goal scales with
+          // how many of its members actually joined this activity.
+          const target = perMemberTarget * t.members.length;
+          return {
+            id: t.id,
+            name: metaById[t.id]?.name,
+            code: metaById[t.id]?.code,
+            image: metaById[t.id]?.image,
+            total_points: t.total_points,
+            total_unit_value: t.total_unit_value,
+            base_points: t.base_points,
+            streak_bonus: t.streak_bonus,
+            adjustment: t.adjustment,
+            target,
+            target_type: targetType,
+            metric_unit: metricUnit,
+            achieved: t.total,
+            reached: target > 0 && t.total >= target,
+            member_count: t.members.length,
+            members: t.members,
+          };
+        }),
       );
     }
 

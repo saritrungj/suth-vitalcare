@@ -11,6 +11,7 @@ import {
   Loader2,
   X,
   Clock,
+  Pencil,
 } from "lucide-vue-next";
 import { uiStore } from "../store/ui";
 import { swal, showSuccess, showError, showConfirm } from "../lib/swal";
@@ -52,6 +53,10 @@ const editRoomForm = ref({
   isPrivate: false,
   code: "",
 });
+const maxMembersPresets = [2, 3, 4, 5, 6];
+const isCustomMaxMembers = computed(
+  () => !maxMembersPresets.includes(editRoomForm.value.maxMembers),
+);
 // isHost determines if the current user is the owner/host of this specific team.
 // Admins who create a team are also considered the host of that team.
 const isHost = computed(() => {
@@ -169,6 +174,28 @@ const handleUpdateRoom = async () => {
       langStore.locale === "th"
         ? "กรุณาระบุ PIN ควบคุมห้องให้ครบ 6 หลัก"
         : "Please enter a 6-digit PIN",
+    );
+  }
+  if (
+    !Number.isInteger(editRoomForm.value.maxMembers) ||
+    editRoomForm.value.maxMembers < 2
+  ) {
+    return showToast(
+      "error",
+      langStore.locale === "th"
+        ? "จำนวนสมาชิกสูงสุดต้องเป็นจำนวนเต็มตั้งแต่ 2 คนขึ้นไป"
+        : "Max members must be a whole number of 2 or more",
+    );
+  }
+  if (
+    currentRoom.value &&
+    editRoomForm.value.maxMembers < currentRoom.value.members.length
+  ) {
+    return showToast(
+      "error",
+      langStore.locale === "th"
+        ? "จำนวนสมาชิกสูงสุดต้องไม่น้อยกว่าจำนวนสมาชิกปัจจุบันในทีม"
+        : "Max members cannot be less than the current member count",
     );
   }
   loading.value = true;
@@ -747,15 +774,12 @@ watch(
                   />
                 </div>
               </div>
-              <div
-                class="w-full mb-8 text-left flex items-center"
-                style="display: flex; align-items: center"
-              >
+              <div class="w-full mb-8 text-left">
                 <label
                   class="input-label mb-0"
                   style="
-                    margin-bottom: 0;
-                    min-width: 90px;
+                    display: block;
+                    margin-bottom: 8px;
                     font-size: 1.05rem;
                     font-weight: 850;
                   "
@@ -763,19 +787,41 @@ watch(
                     langStore.locale === "th" ? "สมาชิกสูงสุด" : "Max Members"
                   }}</label
                 >
-                <div
-                  class="num-grid"
-                  style="flex: 1; margin-left: 12px; display: flex; gap: 8px"
-                >
+                <div class="num-grid" style="display: flex; gap: 8px">
                   <button
-                    v-for="n in [2, 3, 4, 5, 6]"
+                    v-for="n in maxMembersPresets"
                     :key="n"
                     @click="editRoomForm.maxMembers = n"
-                    :class="{ active: editRoomForm.maxMembers === n }"
+                    :class="{
+                      active:
+                        !isCustomMaxMembers && editRoomForm.maxMembers === n,
+                    }"
                     class="num-btn compact"
                   >
                     {{ n }}
                   </button>
+                </div>
+                <div
+                  class="custom-max-row"
+                  :class="{ active: isCustomMaxMembers }"
+                >
+                  <span class="custom-max-tag">
+                    <Pencil :size="13" />
+                    {{ langStore.locale === "th" ? "กำหนดเอง" : "Custom" }}
+                  </span>
+                  <input
+                    class="custom-max-input"
+                    type="number"
+                    min="2"
+                    max="999"
+                    step="1"
+                    v-model.number="editRoomForm.maxMembers"
+                    :placeholder="
+                      langStore.locale === 'th'
+                        ? 'พิมพ์จำนวนคน...'
+                        : 'Type a number...'
+                    "
+                  />
                 </div>
               </div>
               <button
@@ -1454,6 +1500,55 @@ watch(
   border-color: #ff6b00;
   color: #ff6b00;
   box-shadow: 0 4px 10px rgba(255, 107, 0, 0.15);
+}
+.custom-max-row {
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 8px 8px 4px;
+  border-radius: 14px;
+  border: 2px dashed #e2e8f0;
+  background: #f8fafc;
+  transition: 0.2s;
+}
+.custom-max-row.active {
+  border-style: solid;
+  border-color: #ff6b00;
+  background: #fff7ed;
+}
+.custom-max-tag {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  padding: 6px 10px;
+  border-radius: 50px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #64748b;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  white-space: nowrap;
+}
+.custom-max-row.active .custom-max-tag {
+  color: #ff6b00;
+  border-color: #ff6b00;
+}
+.custom-max-input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  font-size: 1rem;
+  font-weight: 700;
+  color: #1e293b;
+  outline: none;
+  font-family: inherit;
+}
+.custom-max-input::placeholder {
+  font-weight: 500;
+  color: #94a3b8;
 }
 .icon-btn-circle-v2 {
   width: 44px;

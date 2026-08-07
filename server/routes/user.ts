@@ -1,5 +1,4 @@
 import express from "express";
-import axios from "axios";
 import { pool } from "../mysql.js";
 import {
   encryptFields,
@@ -269,25 +268,14 @@ router.post("/register-email", async (req, res) => {
     }
   }
 
-  // 1. Verify Cloudflare Turnstile (Captcha) - Only verify if token is provided
-  const secretKey = process.env.TURNSTILE_SECRET_KEY;
-  if (isTurnstileEnabled() && secretKey && captchaToken) {
-    try {
-      const verifyRes = await axios.post(
-        "https://challenges.cloudflare.com/turnstile/v0/siteverify",
-        {
-          secret: secretKey,
-          response: captchaToken,
-        },
-      );
-      if (!verifyRes.data.success) {
-        return res
-          .status(400)
-          .json({ error: "Captcha verification failed. Are you a bot?" });
-      }
-    } catch (verifyError) {
-      console.error("Turnstile verification error:", verifyError);
-      // We don't block registration if the verification service itself is down
+  // 1. Verify Cloudflare Turnstile (Captcha) - Only verify if token is provided.
+  // Uses the same verifier as login so both paths agree on what a valid token
+  // is (form encoding, remoteip handling, expiry classification).
+  if (isTurnstileEnabled() && captchaToken) {
+    const captcha = await verifyTurnstileToken(captchaToken, req.ip);
+    // Never block registration because the verification service itself is down.
+    if (!captcha.success && captcha.code !== "captcha-unavailable") {
+      return res.status(captcha.status).json({ error: captcha.error });
     }
   }
 
@@ -419,19 +407,35 @@ router.post("/login-email", async (req, res) => {
       return res.json(decryptFields(existing[0], USER_ENCRYPTED_FIELDS));
     }
 
-    // 1. Fetch all users to find one with matching decrypted identifiers
-    // We search across email, phone, and id_code because all are encrypted with random IVs
-    const [allUsers]: any = await pool.query(`
+    const searchTarget = normalizeLoginIdentifier(email);
+
+    const USER_SELECT = `
       SELECT u.*, tm.name as team_name,
         EXISTS(SELECT 1 FROM teams t2 WHERE t2.host_id = u.id) as is_team_host
-      FROM users u 
+      FROM users u
       LEFT JOIN teams tm ON u.team_id = tm.id
-    `);
+    `;
 
-    const searchTarget = normalizeLoginIdentifier(email);
-    const userMatch = allUsers.find((u: any) =>
-      userMatchesLoginIdentifier(u, searchTarget),
+    // 1a. Fast path — `username` is plaintext with a UNIQUE index and a
+    // case-insensitive collation, so it resolves in one indexed lookup.
+    // The slow path below loads every user row, which under concurrent logins
+    // exhausts the connection pool (connectionLimit 20 / queueLimit 50) and
+    // makes logins fail at random.
+    const [byUsername]: any = await pool.query(
+      `${USER_SELECT} WHERE u.username = ? LIMIT 1`,
+      [searchTarget],
     );
+    let userMatch: any = byUsername[0] || null;
+
+    // 1b. Slow path — email/phone/id_code are AES-encrypted with random IVs so
+    // they cannot be matched in SQL; decrypt and compare in app.
+    if (!userMatch) {
+      const [allUsers]: any = await pool.query(USER_SELECT);
+      userMatch =
+        allUsers.find((u: any) =>
+          userMatchesLoginIdentifier(u, searchTarget),
+        ) || null;
+    }
 
     if (!userMatch) {
       return res
@@ -1460,157 +1464,6 @@ router.get("/line/:lineId", async (req, res) => {
   }
 });
 
-router.post("/", async (req, res) => {
-  try {
-    const encryptedBody = encryptFields(req.body, USER_ENCRYPTED_FIELDS);
-    const keys = Object.keys(encryptedBody);
-    const values = Object.values(encryptedBody);
-
-    if (keys.length === 0) return res.status(400).json({ error: "Empty body" });
-
-    const placeholders = keys.map(() => "?").join(", ");
-
-    const [result]: any = await pool.query(
-      `INSERT INTO users (${keys.join(", ")}) VALUES (${placeholders})`,
-      values,
-    );
-
-    const [rows]: any = await pool.query("SELECT * FROM users WHERE id = ?", [
-      result.insertId,
-    ]);
-    res.status(201).json(decryptFields(rows[0], USER_ENCRYPTED_FIELDS));
-  } catch (error: any) {
-    res.status(400).json({ error: "Bad Request" });
-  }
-});
-
-// PATCH endpoint for updating user
-router.patch("/:id", async (req, res) => {
-  const requesterId = req.headers["x-user-id"];
-  const { id } = req.params;
-
-  if (!requesterId) return res.status(401).json({ error: "Unauthorized" });
-
-  try {
-    // Permission Check (Admin only for most fields, self for limited fields)
-    const [reqUserRows]: any = await pool.query(
-      "SELECT role FROM users WHERE id = ?",
-      [requesterId],
-    );
-    const requesterRole = reqUserRows[0]?.role;
-
-    if (requesterRole !== "admin" && String(requesterId) !== String(id)) {
-      return res
-        .status(403)
-        .json({ error: "Forbidden: You cannot update this user's data" });
-    }
-
-    // Get current user data
-    const [currentUserRows]: any = await pool.query(
-      "SELECT * FROM users WHERE id = ?",
-      [id],
-    );
-    if (currentUserRows.length === 0)
-      return res.status(404).json({ error: "User not found" });
-
-    // Prepare update data
-    const updateData: any = {};
-    const allowedFields = [
-      "fname_th",
-      "lname_th",
-      "nickname",
-      "email",
-      "phone",
-      "id_code",
-      "role_type",
-      "role_detail_1",
-      "role_detail_2",
-      "address",
-      "weight",
-      "height",
-      "gender",
-      "birth_date",
-      "underlying_disease",
-      "main_goal",
-      "role",
-      "is_suspended",
-    ];
-
-    // Non-admin users can only update limited fields
-    const selfAllowedFields = [
-      "fname_th",
-      "lname_th",
-      "nickname",
-      "phone",
-      "address",
-      "weight",
-      "height",
-      "gender",
-      "birth_date",
-      "underlying_disease",
-      "main_goal",
-    ];
-    const fieldsToCheck =
-      requesterRole === "admin" ? allowedFields : selfAllowedFields;
-
-    for (const field of fieldsToCheck) {
-      if (req.body[field] !== undefined) {
-        updateData[field] = req.body[field];
-      }
-    }
-
-    if (Object.keys(updateData).length === 0) {
-      return res.status(400).json({ error: "No valid fields to update" });
-    }
-
-    // Encrypt sensitive fields
-    const encryptedUpdate = encryptFields(updateData, USER_ENCRYPTED_FIELDS);
-
-    // Build dynamic update query
-    const updateFields = Object.keys(encryptedUpdate);
-    const updateValues = Object.values(encryptedUpdate);
-    const setClause = updateFields.map((field) => `${field} = ?`).join(", ");
-
-    const [result] = (await pool.query(
-      `UPDATE users SET ${setClause} WHERE id = ?`,
-      [...updateValues, id],
-    )) as any;
-
-    if (result.affectedRows === 0) {
-      return res
-        .status(404)
-        .json({ error: "User not found or no changes made" });
-    }
-
-    // Get updated user data
-    const [updatedRows]: any = await pool.query(
-      `
-      SELECT u.*, tm.name as team_name 
-      FROM users u 
-      LEFT JOIN teams tm ON u.team_id = tm.id 
-      WHERE u.id = ?
-    `,
-      [id],
-    );
-
-    const description = `อัปเดตข้อมูลผู้ใช้ ID: ${id}, ฟิลด์: ${Object.keys(updateData).join(", ")}`;
-    await logAudit({
-      req,
-      userId: Array.isArray(requesterId)
-        ? parseInt(requesterId[0])
-        : parseInt(requesterId),
-      action: "update_user",
-      targetId: parseInt(id),
-      description,
-    });
-
-    res.json(decryptFields(updatedRows[0], USER_ENCRYPTED_FIELDS));
-  } catch (error: any) {
-    console.error("Update user error:", error);
-    res.status(500).json({ error: "Internal Server Error" });
-  }
-});
-
 // PATCH endpoint for suspending/unsuspending user
 router.patch("/:id/suspend", async (req, res) => {
   const requesterId = req.headers["x-user-id"];
@@ -1663,58 +1516,6 @@ router.patch("/:id/suspend", async (req, res) => {
     });
   } catch (error: any) {
     console.error("Suspend user error:", error);
-    res.status(500).json({ error: "Internal Server Error" });
-  }
-});
-
-// DELETE endpoint for deleting user
-router.delete("/:id", async (req, res) => {
-  const requesterId = req.headers["x-user-id"];
-  const { id } = req.params;
-
-  if (!requesterId) return res.status(401).json({ error: "Unauthorized" });
-
-  try {
-    // Only admin can delete users
-    const [reqUserRows]: any = await pool.query(
-      "SELECT role FROM users WHERE id = ?",
-      [requesterId],
-    );
-    const requesterRole = reqUserRows[0]?.role;
-
-    if (requesterRole !== "admin") {
-      return res
-        .status(403)
-        .json({ error: "Forbidden: Only admins can delete users" });
-    }
-
-    // Cannot delete yourself
-    if (String(requesterId) === String(id)) {
-      return res.status(400).json({ error: "Cannot delete yourself" });
-    }
-
-    const [result] = (await pool.query("DELETE FROM users WHERE id = ?", [
-      id,
-    ])) as any;
-
-    if (result.affectedRows === 0) {
-      return res.status(404).json({ error: "User not found" });
-    }
-
-    const description = `ลบผู้ใช้ ID: ${id}`;
-    await logAudit({
-      req,
-      userId: Array.isArray(requesterId)
-        ? parseInt(requesterId[0])
-        : parseInt(requesterId),
-      action: "delete_user",
-      targetId: parseInt(id),
-      description,
-    });
-
-    res.json({ message: "User deleted successfully" });
-  } catch (error: any) {
-    console.error("Delete user error:", error);
     res.status(500).json({ error: "Internal Server Error" });
   }
 });
@@ -1776,6 +1577,10 @@ router.post("/:id/reset-password", requireAdmin, async (req, res) => {
 });
 
 // Admin: Verify email manually
+// NOTE: `email_verified` is not a real column on `users` (confirmed via a
+// live query against the dev DB — ER_BAD_FIELD_ERROR). This route has no
+// frontend caller and will 500 if ever invoked. Left as-is rather than
+// guessing at a schema fix — flag to product/DB owner before relying on it.
 router.post("/:id/verify-email", requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
@@ -1994,8 +1799,11 @@ router.post("/", requireAdmin, async (req, res) => {
         lname_th,
         phone: phone || "",
         role: role || "user",
-        password: hashedPassword,
-        email_verified: 1, // Auto-verify admin-created accounts
+        password_hash: hashedPassword,
+        // `email_verified` is not a real column on `users` (no migration ever
+        // added it — confirmed by a live INSERT against the dev DB, which
+        // failed with ER_BAD_FIELD_ERROR). This handler was unreachable until
+        // the duplicate-route fix above, so this was never caught before.
         created_at: new Date(),
       },
       USER_ENCRYPTED_FIELDS,

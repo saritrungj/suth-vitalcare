@@ -1,4 +1,8 @@
 /// <reference types="vite/client" />
+
+// build id ฝังจาก vite.config.ts (define) — ใช้เทียบกับ /version.json
+declare const __APP_VERSION__: string;
+
 declare module "*.png" {
   const src: string;
   export default src;

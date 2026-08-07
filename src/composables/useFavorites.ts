@@ -4,6 +4,11 @@ import { showError } from "../lib/swal";
 const favoriteIds = ref<Set<number>>(new Set());
 const counts = ref<Record<number, number>>({});
 const isLoading = ref(false);
+// Per-event in-flight guard: a fast double-click on the same favorite button
+// fired two overlapping toggle requests, and whichever response landed last
+// won — regardless of click order — leaving the UI out of sync with the
+// server (e.g. two "add" clicks could net out as "removed").
+const pendingToggles = new Set<number>();
 export function useFavorites() {
   const fetchFavorites = async () => {
     if (!authStore.user?.id) return;
@@ -28,6 +33,8 @@ export function useFavorites() {
       showError("กรุณาเข้าสู่ระบบก่อนบันทึกกิจกรรมเป็นรายการโปรดครับ");
       return;
     }
+    if (pendingToggles.has(eventId)) return;
+    pendingToggles.add(eventId);
     const isFav = favoriteIds.value.has(eventId);
     // Optimistic Update with reactive trigger
     const newSet = new Set(favoriteIds.value);
@@ -60,6 +67,8 @@ export function useFavorites() {
       else rollbackSet.delete(eventId);
       favoriteIds.value = rollbackSet;
       showError(e.message || "เกิดข้อผิดพลาด ไม่สามารถดำเนินการได้");
+    } finally {
+      pendingToggles.delete(eventId);
     }
   };
   const fetchEventFavoriteData = async (eventId: number) => {

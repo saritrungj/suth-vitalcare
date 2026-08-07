@@ -418,6 +418,17 @@ router.post("/:id/join", async (req, res) => {
   const eventId = req.params.id;
 
   if (!userId) return res.status(400).json({ error: "Missing userId" });
+  // Self-enroll only — bulk/on-behalf-of enrollment has its own admin-gated
+  // route (POST /admin/enroll). Without this check, any request could pass a
+  // victim's id as userId and force them into an event with no consent
+  // (useEventDetail.ts always sends the caller's own id as both the header
+  // and the body value, so this is a drop-in restriction).
+  const requesterId = req.headers["x-user-id"];
+  if (!requesterId || String(requesterId) !== String(userId)) {
+    return res
+      .status(403)
+      .json({ error: "คุณไม่มีสิทธิ์ทำรายการนี้ให้ผู้ใช้อื่น" });
+  }
 
   const connection = await pool.getConnection();
   try {
@@ -1985,7 +1996,10 @@ router.get("/:id/admin-stats", requireAdminOrHost, async (req, res) => {
   }
 });
 
-router.patch("/:id/assign-team", async (req, res) => {
+// Admin-only: only used from useAdminActivityDashboard.ts. Previously only
+// checked that SOME x-user-id header was present (any logged-in account, not
+// necessarily an admin) — any user could reassign arbitrary users' team_id.
+router.patch("/:id/assign-team", requireAdmin, async (req, res) => {
   const userId = req.headers["x-user-id"];
   if (!userId) return res.status(401).json({ error: "Unauthorized" });
 

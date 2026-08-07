@@ -326,7 +326,10 @@ const submitForm = async () => {
     }
     const res = await fetch("/api/health/save-assessment", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "x-user-id": String(authStore.user.id),
+      },
       body: JSON.stringify(payload),
     });
     if (!res.ok) throw new Error("บันทึกลงฐานข้อมูลล้มเหลว");

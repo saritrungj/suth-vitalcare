@@ -1279,41 +1279,25 @@
                     <!-- Color Tab Legend -->
                     <div class="calendar-legend mt-4">
                       <div class="legend-item">
-                        <div
-                          class="legend-color"
-                          style="background: #10b981"
-                        ></div>
+                        <div class="legend-color legend-done"></div>
                         <span class="legend-text">{{
                           langStore.t("submitted")
                         }}</span>
                       </div>
                       <div class="legend-item">
-                        <div
-                          class="legend-color"
-                          style="background: #3b82f6"
-                        ></div>
+                        <div class="legend-color legend-due"></div>
                         <span class="legend-text">{{
                           langStore.t("due_today")
                         }}</span>
                       </div>
-                      <!-- <div class="legend-item">
-                        <div class="legend-color" style="background: #f59e0b;"></div>
-                        <span class="legend-text">รอตรวจ</span>
-                      </div> -->
                       <div class="legend-item">
-                        <div
-                          class="legend-color"
-                          style="background: #ef4444"
-                        ></div>
+                        <div class="legend-color legend-missed"></div>
                         <span class="legend-text">{{
                           langStore.t("missed")
                         }}</span>
                       </div>
                       <div class="legend-item">
-                        <div
-                          class="legend-color"
-                          style="background: #94a3b8"
-                        ></div>
+                        <div class="legend-color legend-upcoming"></div>
                         <span class="legend-text">{{
                           langStore.t("not_due_yet")
                         }}</span>
@@ -1334,6 +1318,18 @@
                           <div class="stat-info">
                             <div class="stat-t-name">{{ stat.taskName }}</div>
                             <div class="stat-e-name">{{ stat.eventName }}</div>
+                            <div v-if="stat.expected > 0" class="stat-progress">
+                              <div
+                                class="stat-progress-fill"
+                                :style="{
+                                  width:
+                                    Math.min(
+                                      100,
+                                      (stat.completed / stat.expected) * 100,
+                                    ) + '%',
+                                }"
+                              ></div>
+                            </div>
                           </div>
                           <div class="stat-metrics">
                             <div class="metric">
@@ -1363,6 +1359,9 @@
                       </div>
                       <div v-else class="empty-mini">
                         <p>{{ langStore.t("no_mission_summary") }}</p>
+                        <router-link to="/missions" class="empty-mini-cta"
+                          >ไปส่งภารกิจ</router-link
+                        >
                       </div>
                     </div>
                   </div>
@@ -3807,6 +3806,25 @@ onUnmounted(() => {
   height: 16px;
   border-radius: 4px;
 }
+/* Distinct shape per status so meaning isn't colour-only */
+.legend-done {
+  background: var(--cal-done);
+  border-radius: 50%;
+}
+.legend-due {
+  background: var(--cal-due);
+  border-radius: 50%;
+  border: 2px solid #bfdbfe;
+}
+.legend-missed {
+  background: var(--cal-missed);
+  border-radius: 3px;
+}
+.legend-upcoming {
+  background: transparent;
+  border: 2px solid var(--cal-upcoming);
+  border-radius: 50%;
+}
 .legend-text {
   font-size: 0.85rem;
   font-weight: 600;
@@ -3888,6 +3906,23 @@ onUnmounted(() => {
   border: 1px dashed #e2e8f0;
   color: #94a3b8;
   font-size: 0.9rem;
+}
+.empty-mini-cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 20px;
+  border: 1.5px solid #ff6a00;
+  border-radius: 99px;
+  color: #ff6a00;
+  font-weight: 700;
+  font-size: 0.85rem;
+  text-decoration: none;
+  transition: background-color 0.15s ease;
+}
+.empty-mini-cta:hover {
+  background: #fff0e6;
 }
 .section-title-sm {
   font-size: 1rem;
@@ -5421,6 +5456,25 @@ onUnmounted(() => {
   color: #64748b;
   margin-top: 2px;
 }
+.stat-progress {
+  height: 6px;
+  background: #f1f5f9;
+  border-radius: 99px;
+  overflow: hidden;
+  margin-top: 8px;
+  max-width: 200px;
+}
+.stat-progress-fill {
+  height: 100%;
+  background: #ff6a00;
+  border-radius: 99px;
+  transition: width 0.3s ease;
+}
+@media (prefers-reduced-motion: reduce) {
+  .stat-progress-fill {
+    transition: none;
+  }
+}
 .stat-metrics {
   display: flex;
   gap: 16px;
@@ -5481,6 +5535,10 @@ onUnmounted(() => {
   cursor: default;
 }
 .calendar-layout-v2 {
+  --cal-done: #10b981;
+  --cal-due: #3b82f6;
+  --cal-missed: #ef4444;
+  --cal-upcoming: #94a3b8;
   display: flex;
   flex-direction: column;
   gap: 0;

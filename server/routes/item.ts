@@ -149,7 +149,12 @@ router.delete("/:id", requireAdmin, async (req, res) => {
 
 // POST redeem reward
 router.post("/redeem", async (req, res) => {
-  const { user_id, reward_id } = req.body;
+  const { reward_id } = req.body;
+  // Redemption always debits the caller's own points — take the identity
+  // from the auth header, not req.body.user_id. Previously user_id came
+  // straight from the body, so anyone could redeem (and drain the points of)
+  // any other account by supplying that account's id.
+  const user_id = req.headers["x-user-id"];
 
   if (!user_id || !reward_id) {
     return res.status(400).json({ error: "Missing user_id or reward_id" });

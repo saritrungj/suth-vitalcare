@@ -1,19 +1,12 @@
 <template>
-  <div class="profile-dashboard font-sans p-2 md:p-6 bg-slate-50 min-h-screen">
-    <div
-      class="dashboard-header mb-8 flex flex-col md:flex-row justify-between items-start md:items-end gap-4"
-    >
-      <div>
-        <h2 class="text-3xl font-black text-slate-800 tracking-tight">
-          สรุปผลสุขภาพและกิจกรรม
-        </h2>
-        <p class="text-slate-500 mt-2 font-medium">
-          ข้อมูลสรุปการเข้าร่วมกิจกรรมและผลประเมินรายบุคคล
-        </p>
-      </div>
+  <div class="profile-dashboard font-sans p-2 md:p-6">
+    <div class="dashboard-header mb-8 flex justify-end">
       <button
         @click="fetchData"
-        class="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl font-bold transition-all shadow-sm"
+        :disabled="isLoading"
+        :aria-busy="isLoading"
+        aria-label="อัปเดตข้อมูลสรุป"
+        class="flex items-center gap-2 bg-orange-500 hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed text-white px-5 py-2.5 rounded-xl font-bold transition-all shadow-sm"
       >
         <RefreshCcw :class="{ 'animate-spin': isLoading }" :size="18" />
         อัปเดตข้อมูล
@@ -57,15 +50,18 @@
           </div>
         </div>
 
-        <div class="summary-card glass purple">
+        <button
+          class="summary-card glass orange-primary"
+          @click="showBreakdown = true"
+        >
           <div class="card-icon"><Award :size="22" /></div>
           <div class="card-info">
-            <div class="card-label">คะแนน VitalCare</div>
-            <div class="card-value">
-              {{ points.toLocaleString() }} <small>แต้ม</small>
+            <div class="card-label">คะแนนสะสม (กิจกรรม)</div>
+            <div class="card-value card-value-link">
+              {{ activityScoreTotal.toLocaleString() }} <small>คะแนน</small>
             </div>
           </div>
-        </div>
+        </button>
 
         <div class="summary-card glass teal">
           <div class="card-icon"><Droplets :size="22" /></div>
@@ -109,23 +105,27 @@
               แนวโน้มคะแนนประเมินสุขภาพ
             </h3>
             <div
-              class="text-xs font-bold text-indigo-600 bg-indigo-50 px-3 py-1 rounded-full"
+              class="text-xs font-bold text-orange-600 bg-orange-50 px-3 py-1 rounded-full"
             >
               เฉลี่ย {{ avgAssessmentScore }} คะแนน
             </div>
           </div>
+          <p class="sr-only">
+            แนวโน้มคะแนนประเมินสุขภาพ {{ assessments.length }} ครั้ง เฉลี่ย
+            {{ avgAssessmentScore }} คะแนน
+          </p>
           <div class="flex-1 relative min-h-[300px]">
             <Line
               v-if="assessmentChartData.labels.length > 0"
               :data="assessmentChartData"
               :options="lineChartOptions"
             />
-            <div
-              v-else
-              class="absolute inset-0 flex flex-col items-center justify-center text-slate-400 font-medium"
-            >
-              <FileText :size="48" class="opacity-20 mb-2" />
-              ไม่พบประวัติการประเมิน
+            <div v-else class="empty-block absolute inset-0">
+              <FileText :size="48" class="empty-block-icon" />
+              <p class="empty-block-text">ไม่พบประวัติการประเมิน</p>
+              <router-link to="/health" class="empty-block-cta"
+                >ทำแบบประเมิน</router-link
+              >
             </div>
           </div>
         </div>
@@ -142,12 +142,12 @@
               :data="missionStatusData"
               :options="doughnutChartOptions"
             />
-            <div
-              v-else
-              class="absolute inset-0 flex flex-col items-center justify-center text-slate-400 font-medium"
-            >
-              <ClipboardList :size="48" class="opacity-20 mb-2" />
-              ยังไม่มีการส่งภารกิจ
+            <div v-else class="empty-block absolute inset-0">
+              <ClipboardList :size="48" class="empty-block-icon" />
+              <p class="empty-block-text">ยังไม่มีการส่งภารกิจ</p>
+              <router-link to="/missions" class="empty-block-cta"
+                >ไปส่งภารกิจ</router-link
+              >
             </div>
           </div>
         </div>
@@ -163,11 +163,12 @@
           <div
             class="space-y-3 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar"
           >
-            <div
-              v-if="submissions.length === 0"
-              class="py-12 text-center text-slate-400"
-            >
-              ไม่มีประวัติกิจกรรมล่าสุด
+            <div v-if="submissions.length === 0" class="empty-block py-12">
+              <ClipboardList :size="40" class="empty-block-icon" />
+              <p class="empty-block-text">ไม่มีประวัติกิจกรรมล่าสุด</p>
+              <router-link to="/missions" class="empty-block-cta"
+                >ไปส่งภารกิจ</router-link
+              >
             </div>
             <div
               v-for="sub in submissions.slice(0, 10)"
@@ -220,11 +221,12 @@
           <div
             class="space-y-3 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar"
           >
-            <div
-              v-if="assessments.length === 0"
-              class="py-12 text-center text-slate-400"
-            >
-              ไม่มีประวัติแบบประเมิน
+            <div v-if="assessments.length === 0" class="empty-block py-12">
+              <FileText :size="40" class="empty-block-icon" />
+              <p class="empty-block-text">ไม่มีประวัติแบบประเมิน</p>
+              <router-link to="/health" class="empty-block-cta"
+                >ทำแบบประเมิน</router-link
+              >
             </div>
             <div
               v-for="assessment in assessments"
@@ -233,7 +235,7 @@
             >
               <div class="flex items-center gap-4">
                 <div
-                  class="w-12 h-12 rounded-xl bg-indigo-50 border border-indigo-100 text-indigo-600 flex items-center justify-center flex-shrink-0"
+                  class="w-12 h-12 rounded-xl bg-orange-50 border border-orange-100 text-orange-600 flex items-center justify-center flex-shrink-0"
                 >
                   <FileText :size="22" />
                 </div>
@@ -259,11 +261,17 @@
         </div>
       </div>
     </div>
+    <PointsBreakdownModal
+      :open="showBreakdown"
+      :user-id="user?.id ?? null"
+      @close="showBreakdown = false"
+    />
   </div>
 </template>
 
 <script setup>
 import { ref, onMounted, computed } from "vue";
+import PointsBreakdownModal from "./common/PointsBreakdownModal.vue";
 import {
   HeartPulse,
   Activity,
@@ -321,6 +329,8 @@ const props = defineProps({
 // ---------------- State Variables ----------------
 const isLoading = ref(true);
 const assessments = ref([]);
+const showBreakdown = ref(false);
+const activityScoreTotal = ref(0);
 
 // New-activity notifications surfaced on the dashboard
 const { items: appNotifications, fetchNotifications } = useNotifications();
@@ -399,11 +409,11 @@ const assessmentChartData = computed(() => {
       {
         label: "คะแนนประเมินสุขภาพ",
         data: scores,
-        borderColor: "#4f46e5",
-        backgroundColor: "rgba(79, 70, 229, 0.1)",
+        borderColor: "#FF6A00",
+        backgroundColor: "rgba(255, 106, 0, 0.1)",
         borderWidth: 3,
         pointBackgroundColor: "#ffffff",
-        pointBorderColor: "#4f46e5",
+        pointBorderColor: "#FF6A00",
         pointBorderWidth: 2,
         pointRadius: 4,
         fill: true,
@@ -414,16 +424,28 @@ const assessmentChartData = computed(() => {
 });
 
 const missionStatusData = computed(() => {
+  const other = totalMissions.value - approvedCount.value - pendingCount.value;
+  const rows = [
+    {
+      label: `สำเร็จ · ${approvedCount.value}`,
+      value: approvedCount.value,
+      color: "#10b981",
+    },
+    {
+      label: `รอตรวจสอบ · ${pendingCount.value}`,
+      value: pendingCount.value,
+      color: "#f59e0b",
+    },
+  ];
+  if (other > 0) {
+    rows.push({ label: `อื่น ๆ · ${other}`, value: other, color: "#ef4444" });
+  }
   return {
-    labels: ["สำเร็จ", "รอตรวจสอบ", "อื่น ๆ"],
+    labels: rows.map((r) => r.label),
     datasets: [
       {
-        data: [
-          approvedCount.value,
-          pendingCount.value,
-          totalMissions.value - approvedCount.value - pendingCount.value,
-        ],
-        backgroundColor: ["#10b981", "#f59e0b", "#ef4444"],
+        data: rows.map((r) => r.value),
+        backgroundColor: rows.map((r) => r.color),
         borderWidth: 0,
         hoverOffset: 4,
       },
@@ -445,7 +467,11 @@ const lineChartOptions = {
     },
   },
   scales: {
-    y: { beginAtZero: true, grid: { color: "#f1f5f9" } },
+    y: {
+      beginAtZero: true,
+      grid: { color: "#f1f5f9" },
+      title: { display: true, text: "คะแนน" },
+    },
     x: { grid: { display: false } },
   },
 };
@@ -470,6 +496,12 @@ const fetchData = async () => {
     const res = await fetch(`/api/health/my-assessments/${props.user.id}`);
     if (res.ok) {
       assessments.value = await res.json();
+    }
+    const sr = await fetch(`/api/stats/user/${props.user.id}/activity-scores`, {
+      headers: { "x-user-id": String(props.user.id) },
+    });
+    if (sr.ok) {
+      activityScoreTotal.value = (await sr.json()).total || 0;
     }
   } catch (error) {
     console.error("Error fetching assessments:", error);
@@ -587,6 +619,13 @@ const formatTimeOnly = (dateString) => {
 .summary-card.purple {
   border-bottom: 4px solid #8b5cf6;
 }
+.summary-card.orange-primary {
+  border-bottom: 4px solid #ff6a00;
+  text-align: left;
+  width: 100%;
+  font-family: inherit;
+  cursor: pointer;
+}
 
 .card-icon {
   width: 40px;
@@ -613,6 +652,14 @@ const formatTimeOnly = (dateString) => {
 .summary-card.purple .card-icon {
   background: #f5f3ff;
   color: #8b5cf6;
+}
+.summary-card.orange-primary .card-icon {
+  background: #fff0e6;
+  color: #ff6a00;
+}
+.card-value-link {
+  text-decoration: underline dotted;
+  text-underline-offset: 4px;
 }
 
 .card-label {
@@ -662,5 +709,61 @@ const formatTimeOnly = (dateString) => {
 .custom-scrollbar::-webkit-scrollbar-thumb {
   background: #cbd5e1;
   border-radius: 4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .summary-card,
+  .summary-card:hover {
+    transition: none;
+    transform: none;
+  }
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Empty states — icon + text + CTA (shared across dashboard sections) */
+.empty-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  text-align: center;
+  color: #94a3b8;
+}
+.empty-block-icon {
+  opacity: 0.2;
+}
+.empty-block-text {
+  font-weight: 500;
+  font-size: 0.9rem;
+}
+.empty-block-cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 20px;
+  margin-top: 4px;
+  border: 1.5px solid #ff6a00;
+  border-radius: 99px;
+  color: #ff6a00;
+  font-weight: 700;
+  font-size: 0.85rem;
+  text-decoration: none;
+  transition: background-color 0.15s ease;
+}
+.empty-block-cta:hover {
+  background: #fff0e6;
 }
 </style>

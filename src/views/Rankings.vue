@@ -129,7 +129,7 @@
             </div>
 
             <div class="leaderboard-card">
-              <div class="list-header">
+              <div class="list-header" :class="{ 'no-points': isPoints }">
                 <div class="col-rank">{{ langStore.t("rank_col") }}</div>
                 <div class="col-name">
                   {{
@@ -138,8 +138,11 @@
                       : langStore.t("rank_teamname")
                   }}
                 </div>
-                <div class="col-score">
+                <div class="col-progress">
                   {{ langStore.t("rank_goal_col") }}
+                </div>
+                <div v-if="!isPoints" class="col-points">
+                  {{ langStore.t("points") }}
                 </div>
               </div>
               <div v-if="loading" class="loading-state">
@@ -196,6 +199,7 @@
                   :class="{
                     'is-me': isCurrentUser(item),
                     'top-3': item.rank <= 3,
+                    'no-points': isPoints,
                   }"
                   @click="handleItemClick(item)"
                 >
@@ -213,55 +217,121 @@
                     }}</span>
                   </div>
                   <div class="col-name">
-                    <div v-if="activeTab === 'individual'" class="avatar">
+                    <div
+                      class="avatar"
+                      :class="{ 'avatar-team': activeTab === 'team' }"
+                    >
                       <img
                         v-if="getImage(item)"
                         :src="getImage(item)"
                         loading="lazy"
                         decoding="async"
+                        alt=""
                       />
                       <span v-else>{{ getInitial(item) }}</span>
                     </div>
-                    <div class="name-text flex items-center gap-2">
-                      <span>{{ getName(item) }}</span>
-                      <!-- Streak Badge (individual tab only) -->
-                      <span
-                        v-if="activeTab === 'individual' && item.streak >= 1"
-                        class="streak-badge"
-                        :class="{
-                          'streak-hot': item.streak >= 7,
-                          'streak-warm': item.streak >= 3 && item.streak < 7,
-                          'streak-cool': item.streak < 3,
-                        }"
-                        :title="`${item.streak} วันติดต่อกัน`"
+                    <div class="name-block">
+                      <div class="name-line">
+                        <span class="name-text">{{ getName(item) }}</span>
+                        <!-- Streak Badge (individual tab only) -->
+                        <span
+                          v-if="activeTab === 'individual' && item.streak >= 1"
+                          class="streak-badge"
+                          :class="{
+                            'streak-hot': item.streak >= 7,
+                            'streak-warm': item.streak >= 3 && item.streak < 7,
+                            'streak-cool': item.streak < 3,
+                          }"
+                          :title="`${item.streak} วันติดต่อกัน`"
+                        >
+                          <Flame :size="13" />
+                          {{ item.streak }}</span
+                        >
+                      </div>
+
+                      <!-- Team: member thumbnails + count, tap the row to see all -->
+                      <div
+                        v-if="activeTab === 'team'"
+                        class="team-members-line"
                       >
-                        <Flame :size="13" />
-                        {{ item.streak }}</span
-                      >
+                        <div
+                          v-if="getTeamMembers(item).length"
+                          class="member-stack"
+                        >
+                          <span
+                            v-for="m in getTeamMembers(item).slice(0, 4)"
+                            :key="m.id"
+                            class="member-chip"
+                            :title="m.name"
+                          >
+                            <img
+                              v-if="getMemberImage(m)"
+                              :src="getMemberImage(m)"
+                              loading="lazy"
+                              decoding="async"
+                              alt=""
+                            />
+                            <span v-else>{{ getMemberInitial(m) }}</span>
+                          </span>
+                          <span
+                            v-if="getTeamMemberCount(item) > 4"
+                            class="member-chip member-chip-more"
+                            >+{{ getTeamMemberCount(item) - 4 }}</span
+                          >
+                        </div>
+                        <span class="team-members-count">
+                          <Users :size="12" />
+                          {{ getTeamMemberCount(item) }}
+                          {{ langStore.t("team_members_unit") }}
+                        </span>
+                        <span v-if="isPoints" class="score-parts">
+                          ภารกิจ {{ getScoreParts(item).base }} · streak +{{
+                            getScoreParts(item).streakBonus
+                          }}
+                          · ปรับ {{ getScoreParts(item).adjustment }}
+                        </span>
+                      </div>
+
+                      <span v-else-if="isCurrentUser(item)" class="me-badge">{{
+                        langStore.t("my_rank")
+                      }}</span>
+                      <span v-else-if="isPoints" class="score-parts">
+                        ภารกิจ {{ getScoreParts(item).base }} · streak +{{
+                          getScoreParts(item).streakBonus
+                        }}
+                        · ปรับ {{ getScoreParts(item).adjustment }}
+                      </span>
                     </div>
                   </div>
-                  <div class="col-score">
-                    <div class="score-line">
-                      <span class="score-val">{{
+                  <div class="col-progress">
+                    <div class="prog-nums">
+                      <span class="prog-achieved">{{
                         formatDist(getDistance(item))
                       }}</span>
-                      <span class="score-unit">{{
+                      <span v-if="getTarget(item) > 0" class="prog-target">
+                        <Check
+                          v-if="isReached(item)"
+                          :size="12"
+                          class="goal-check"
+                        />
+                        / {{ formatDist(getTarget(item)) }}
+                      </span>
+                      <span v-else class="prog-unit">{{
                         isPoints ? langStore.t("points") : rankingUnitShort
                       }}</span>
                     </div>
-                    <div v-if="getTarget(item) > 0" class="goal-line">
-                      <Check
-                        v-if="isReached(item)"
-                        :size="12"
-                        class="goal-check"
-                      />
-                      <span class="goal-target"
-                        >/ {{ formatDist(getTarget(item)) }}
-                        {{
-                          isPoints ? langStore.t("points") : rankingUnitShort
-                        }}</span
-                      >
+                    <div v-if="getTarget(item) > 0" class="prog-track">
+                      <div
+                        class="prog-fill"
+                        :style="{ width: getPercent(item) + '%' }"
+                      ></div>
                     </div>
+                  </div>
+                  <div v-if="!isPoints" class="col-points">
+                    <div class="pts-val">
+                      {{ getScore(item).toLocaleString() }}
+                    </div>
+                    <div class="pts-label">{{ langStore.t("points") }}</div>
                   </div>
                 </div>
               </TransitionGroup>
@@ -289,6 +359,15 @@
       :unit-short="rankingUnitShort"
       @close="closeSubmissionModal"
     />
+    <TeamMembersModal
+      :open="showTeamModal"
+      :team="selectedTeam"
+      :members="teamMembers"
+      :loading="loadingMembers"
+      :is-points="isPoints"
+      :unit-short="rankingUnitShort"
+      @close="closeTeamModal"
+    />
   </div>
 </template>
 
@@ -303,9 +382,11 @@ import {
   Flame,
   Check,
   Inbox,
+  Users,
 } from "lucide-vue-next";
 import AppPagination from "../components/common/AppPagination.vue";
 import SubmissionModal from "../components/SubmissionModal.vue";
+import TeamMembersModal from "../components/TeamMembersModal.vue";
 import MultiSelectFilter from "../components/common/MultiSelectFilter.vue";
 import { langStore } from "../store/lang";
 
@@ -339,6 +420,13 @@ const {
   hasJoinedActivities,
   getTarget,
   isReached,
+  getScore,
+  getScoreParts,
+  getPercent,
+  getTeamMembers,
+  getTeamMemberCount,
+  getMemberImage,
+  getMemberInitial,
   changePage,
   switchTab,
   handleItemClick,
@@ -347,6 +435,11 @@ const {
   showSubmissionModal,
   selectedUser,
   closeSubmissionModal,
+  showTeamModal,
+  selectedTeam,
+  teamMembers,
+  loadingMembers,
+  closeTeamModal,
   selectedRoleTypes,
   roleTypeOptions,
   hasFilters,
@@ -812,40 +905,113 @@ const handleSelectActivity = (id) => {
   overflow: hidden;
 }
 
+/* ── Responsive leaderboard grid ────────────────────────────────────────────
+   One grid definition drives both the header and the rows so columns always
+   line up. Small screens stack the progress meter onto its own line under the
+   name; ≥640px everything sits on a single line.                              */
+.list-header,
+.list-row {
+  display: grid;
+  align-items: center;
+  column-gap: 12px;
+  row-gap: 8px;
+  grid-template-columns: 40px minmax(0, 1fr) auto;
+  grid-template-areas:
+    "rank name points"
+    "rank prog prog";
+}
+
+@media (min-width: 640px) {
+  .list-header,
+  .list-row {
+    grid-template-columns: 56px minmax(0, 1fr) 160px auto;
+    grid-template-areas: "rank name prog points";
+    row-gap: 0;
+  }
+}
+@media (min-width: 1024px) {
+  .list-header,
+  .list-row {
+    grid-template-columns: 60px minmax(0, 1fr) 224px auto;
+  }
+}
+
+/* Points column is absent when the activity is points-based — collapse the
+   track so the remaining columns still fill the row. */
+.list-header.no-points,
+.list-row.no-points {
+  grid-template-columns: 40px minmax(0, 1fr);
+  grid-template-areas:
+    "rank name"
+    "rank prog";
+}
+@media (min-width: 640px) {
+  .list-header.no-points,
+  .list-row.no-points {
+    grid-template-columns: 56px minmax(0, 1fr) 160px;
+    grid-template-areas: "rank name prog";
+  }
+}
+@media (min-width: 1024px) {
+  .list-header.no-points,
+  .list-row.no-points {
+    grid-template-columns: 60px minmax(0, 1fr) 224px;
+  }
+}
+
 .list-header {
-  display: flex;
-  padding: 16px 20px;
+  padding: 14px 20px;
   background: #f8fafc;
   border-bottom: 1px solid var(--border);
-  font-size: 0.9rem;
-  font-weight: 600;
+  font-size: 0.72rem;
+  font-weight: 700;
   color: var(--text-muted);
   text-transform: uppercase;
+  letter-spacing: 0.04em;
+  row-gap: 0;
+}
+/* The header never needs the stacked second line. */
+.list-header .col-progress {
+  grid-area: prog;
+}
+@media (max-width: 639px) {
+  .list-header {
+    grid-template-areas: "rank name points";
+  }
+  .list-header.no-points {
+    grid-template-areas: "rank name";
+  }
+  .list-header .col-progress {
+    display: none;
+  }
 }
 
 .col-rank {
-  width: 60px;
+  grid-area: rank;
   text-align: center;
-  flex-shrink: 0;
-}
-
-.col-name {
-  flex: 1;
   min-width: 0;
 }
 
-.col-score {
-  width: 120px;
+.col-name {
+  grid-area: name;
+  min-width: 0;
+}
+
+.col-progress {
+  grid-area: prog;
+  min-width: 0;
+}
+
+.col-points {
+  grid-area: points;
   text-align: right;
-  flex-shrink: 0;
+  min-width: 56px;
 }
 
 .list-row {
-  display: flex;
-  align-items: center;
-  padding: 16px 20px;
+  padding: 14px 20px;
   border-bottom: 1px solid var(--border);
-  transition: 0.2s;
+  transition: background-color 0.2s;
   cursor: pointer;
 }
 
@@ -853,9 +1019,11 @@ const handleSelectActivity = (id) => {
   background: #f8fafc;
 }
 
+/* Inset shadow instead of a border so the row never shifts 4px left of its
+   neighbours (a real jitter at narrow widths with the grid layout). */
 .list-row.is-me {
   background: #fff7ed;
-  border-left: 4px solid var(--primary);
+  box-shadow: inset 4px 0 0 var(--primary);
 }
 
 .list-row.is-me:hover {
@@ -898,18 +1066,18 @@ const handleSelectActivity = (id) => {
   color: var(--text-muted);
 }
 
-.col-name {
+.list-row .col-name {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 12px;
   overflow: hidden;
 }
 
 .avatar {
-  width: 40px;
-  height: 40px;
-  min-width: 40px;
-  min-height: 40px;
+  width: 42px;
+  height: 42px;
+  min-width: 42px;
+  min-height: 42px;
   border-radius: 50%;
   background: #e2e8f0;
   display: flex;
@@ -922,10 +1090,70 @@ const handleSelectActivity = (id) => {
   aspect-ratio: 1/1;
 }
 
+/* Teams read as a group, not a person — square off the corners. */
+.avatar-team {
+  border-radius: 12px;
+}
+
 .avatar img {
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+
+/* ── Team member thumbnails ── */
+.team-members-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.member-stack {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.member-chip {
+  width: 22px;
+  height: 22px;
+  min-width: 22px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: #e2e8f0;
+  color: #64748b;
+  border: 2px solid #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.56rem;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.member-chip + .member-chip {
+  margin-left: -7px;
+}
+.member-chip img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.member-chip-more {
+  background: var(--primary-light);
+  color: #c2410c;
+  font-size: 0.55rem;
+}
+
+.team-members-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  white-space: nowrap;
 }
 
 .name-text {
@@ -936,39 +1164,101 @@ const handleSelectActivity = (id) => {
   text-overflow: ellipsis;
 }
 
-.col-score {
+.name-block {
   display: flex;
   flex-direction: column;
-  align-items: flex-end;
-  gap: 2px;
+  gap: 3px;
+  min-width: 0;
 }
 
-.score-line {
+.name-line {
   display: flex;
-  align-items: baseline;
-  gap: 4px;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
 }
 
-.score-val {
+.me-badge {
+  align-self: flex-start;
+  font-size: 0.62rem;
   font-weight: 700;
-  font-size: 1.1rem;
+  text-transform: uppercase;
+  background: #fed7aa;
+  color: #9a3412;
+  padding: 1px 8px;
+  border-radius: 6px;
 }
 
-.score-unit {
-  font-size: 0.85rem;
+.score-parts {
+  font-size: 0.68rem;
   color: var(--text-muted);
 }
 
-.goal-line {
+.prog-nums {
   display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  margin-bottom: 5px;
+}
+
+.prog-achieved {
+  color: var(--text-main);
+  font-variant-numeric: tabular-nums;
+}
+
+.prog-target {
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  display: inline-flex;
   align-items: center;
   gap: 3px;
-  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+.prog-unit {
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.prog-track {
+  height: 6px;
+  background: #f1f5f9;
+  border-radius: 99px;
+  overflow: hidden;
+}
+
+.prog-fill {
+  height: 100%;
+  background: var(--primary);
+  border-radius: 99px;
+  transition: width 0.3s ease;
+}
+
+.pts-val {
+  font-size: 1.05rem;
+  font-weight: 900;
+  color: var(--primary);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+
+.pts-label {
+  font-size: 0.62rem;
+  font-weight: 700;
   color: var(--text-muted);
 }
 
 .goal-check {
   color: #16a34a;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .prog-fill {
+    transition: none;
+  }
 }
 
 .no-joined .empty-icon {
@@ -1063,16 +1353,13 @@ const handleSelectActivity = (id) => {
     padding: 24px 16px;
   }
   .banner-text h2 {
-    font-size: 1.5rem;
+    font-size: 1.35rem;
   }
-  .col-rank {
-    width: 50px;
+  .banner-text p {
+    font-size: 0.92rem;
   }
-  .col-score {
-    width: 90px;
-  }
-  .score-val {
-    font-size: 1.05rem;
+  .pts-val {
+    font-size: 1rem;
   }
   .activity-dropdown-card {
     position: fixed;
@@ -1087,35 +1374,26 @@ const handleSelectActivity = (id) => {
 @media (max-width: 480px) {
   .list-header {
     padding: 12px 16px;
-    font-size: 0.8rem;
+    font-size: 0.66rem;
   }
   .list-row {
     padding: 12px 16px;
   }
-  .col-rank {
-    width: 40px;
-  }
-  .col-name {
+  .list-row .col-name {
     gap: 10px;
   }
   .avatar {
-    width: 32px;
-    height: 32px;
-    min-width: 32px;
-    min-height: 32px;
+    width: 36px;
+    height: 36px;
+    min-width: 36px;
+    min-height: 36px;
   }
   .name-text {
     font-size: 0.95rem;
   }
-  .col-score {
-    width: auto;
-    min-width: 70px;
-  }
-  .score-val {
-    font-size: 1rem;
-  }
-  .score-unit {
-    font-size: 0.75rem;
+  .name-line {
+    flex-wrap: wrap;
+    gap: 4px;
   }
   .tab-btn {
     font-size: 0.9rem;
@@ -1126,6 +1404,41 @@ const handleSelectActivity = (id) => {
   } /* Hide "VitalCare" on very small screens */
   .bc-separator-flat {
     display: none;
+  }
+}
+
+/* Very narrow phones: drop the streak pill's label padding and let the name
+   take the full width before it ellipsises. */
+@media (max-width: 360px) {
+  .list-header,
+  .list-row {
+    column-gap: 8px;
+    grid-template-columns: 32px minmax(0, 1fr) auto;
+  }
+  .list-header.no-points,
+  .list-row.no-points {
+    grid-template-columns: 32px minmax(0, 1fr);
+  }
+  .list-row,
+  .list-header {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+  .avatar {
+    width: 32px;
+    height: 32px;
+    min-width: 32px;
+    min-height: 32px;
+  }
+}
+
+/* Tablet & up: give rows a little more breathing room. */
+@media (min-width: 768px) {
+  .list-row {
+    padding: 16px 24px;
+  }
+  .list-header {
+    padding: 14px 24px;
   }
 }
 </style>

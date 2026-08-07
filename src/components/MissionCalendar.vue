@@ -5,16 +5,24 @@
         <div class="month-nav">
           <span class="month-title">{{ monthLabel }} {{ yearLabel }}</span>
           <div class="nav-arrows-container">
-            <button class="nav-arrow" @click="$emit('prevMonth')">
+            <button
+              class="nav-arrow"
+              @click="$emit('prevMonth')"
+              aria-label="เดือนก่อนหน้า"
+            >
               <ChevronLeft :size="20" />
             </button>
-            <button class="nav-arrow" @click="$emit('nextMonth')">
+            <button
+              class="nav-arrow"
+              @click="$emit('nextMonth')"
+              aria-label="เดือนถัดไป"
+            >
               <ChevronRight :size="20" />
             </button>
           </div>
         </div>
       </div>
-      <table>
+      <table role="grid" :aria-label="calendarLabel">
         <thead>
           <tr>
             <th
@@ -30,7 +38,6 @@
             <td
               v-for="(day, dIdx) in week"
               :key="dIdx"
-              @click="day && $emit('selectDay', day)"
               :class="[
                 !day ? 'is-empty' : '',
                 day?.isToday ? 'is-today' : '',
@@ -41,36 +48,43 @@
               ]"
             >
               <template v-if="day">
-                <input
-                  type="checkbox"
-                  :checked="selectedDate?.getTime() === day.date.getTime()"
-                  readonly
-                />
-                <div class="day-content">
-                  <span class="day-num">{{ day.day }}</span>
-                  <div
-                    class="day-bars"
-                    v-if="day.missions && day.missions.length"
-                  >
+                <button
+                  type="button"
+                  class="day-btn"
+                  :aria-label="dayAriaLabel(day)"
+                  :aria-pressed="selectedDate?.getTime() === day.date.getTime()"
+                  :aria-current="day.isToday ? 'date' : undefined"
+                  @click="$emit('selectDay', day)"
+                >
+                  <div class="day-content">
+                    <span class="day-num">{{ day.day }}</span>
                     <div
-                      v-for="(m, i) in day.missions.slice(0, maxBars)"
-                      :key="i"
-                      class="mission-bar"
-                      :class="m.status"
+                      class="day-bars"
+                      v-if="day.missions && day.missions.length"
                     >
-                      <span class="mission-text">{{
-                        m.task?.note || m.task?.type || "ภารกิจ"
-                      }}</span>
+                      <div
+                        v-for="(m, i) in day.missions.slice(0, maxBars)"
+                        :key="i"
+                        class="mission-bar"
+                        :class="m.status"
+                      >
+                        <span class="mission-text">{{
+                          m.task?.note || m.task?.type || "ภารกิจ"
+                        }}</span>
+                      </div>
+                      <div
+                        v-if="day.missions.length > maxBars"
+                        class="more-bars"
+                      >
+                        +{{ day.missions.length - maxBars }} เพิ่มเติม
+                      </div>
                     </div>
-                    <div v-if="day.missions.length > maxBars" class="more-bars">
-                      +{{ day.missions.length - maxBars }} เพิ่มเติม
+                    <!-- fallback if missions not provided -->
+                    <div class="day-bars fallback" v-else-if="day.status">
+                      <div class="mission-bar" :class="day.status"></div>
                     </div>
                   </div>
-                  <!-- fallback if missions not provided -->
-                  <div class="day-bars fallback" v-else-if="day.status">
-                    <div class="mission-bar" :class="day.status"></div>
-                  </div>
-                </div>
+                </button>
               </template>
             </td>
           </tr>
@@ -112,6 +126,19 @@ const weeks = computed(() => {
   }
   return result;
 });
+
+const calendarLabel = computed(
+  () => `ปฏิทินภารกิจ ${props.monthLabel} ${props.yearLabel}`,
+);
+
+const thaiDateFormatter = new Intl.DateTimeFormat("th-TH", {
+  dateStyle: "long",
+});
+const dayAriaLabel = (day) => {
+  const d = thaiDateFormatter["format"](day.date);
+  const n = day.missions?.length || 0;
+  return n ? `${d} — ${n} ภารกิจ` : d;
+};
 </script>
 
 <style scoped>
@@ -264,6 +291,18 @@ td.not-current-month .day-num {
 }
 
 /* ── Day content ── */
+.day-btn {
+  all: unset;
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: pointer;
+}
+.day-btn:focus-visible {
+  outline: 2px solid #ff6a00;
+  outline-offset: -2px;
+}
+
 td .day-content {
   position: absolute;
   top: 0;
@@ -277,10 +316,6 @@ td .day-content {
   box-sizing: border-box;
   overflow: hidden;
   gap: 2px;
-}
-
-td input[type="checkbox"] {
-  display: none;
 }
 
 .day-num {

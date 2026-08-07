@@ -191,10 +191,21 @@ router.post("/submit", async (req, res) => {
 
 // Update an existing submission (for editing within the same day)
 // Note: This does NOT add points again to prevent duplication.
+//
+// Callers: a user editing their own pending submission (useMissions.ts) AND
+// admins editing any submission (useAdminActivityDashboard.ts,
+// useAdminUserDetail.ts) — so this needs an ownership-OR-admin check, not a
+// blanket requireAdmin. Previously had NO auth check at all: any client could
+// PATCH any submission id and rewrite its value/image/text/date.
 router.patch("/submission/:id", async (req, res) => {
   const { id } = req.params;
+  const requesterId = req.headers["x-user-id"];
   const { value, imageUrl, textResponse, note, activity_type, created_at } =
     req.body;
+
+  if (!requesterId) {
+    return res.status(401).json({ error: "กรุณาเข้าสู่ระบบก่อน" });
+  }
 
   const connection = await pool.getConnection();
   try {
@@ -205,6 +216,22 @@ router.patch("/submission/:id", async (req, res) => {
       [id],
     );
     const oldSub = subRows[0];
+
+    if (!oldSub) {
+      await connection.rollback();
+      return res.status(404).json({ error: "ไม่พบข้อมูลการส่งงาน" });
+    }
+
+    const [reqRows]: any = await connection.query(
+      "SELECT role FROM users WHERE id = ?",
+      [requesterId],
+    );
+    const requesterRole = reqRows[0]?.role;
+    const isPrivileged = requesterRole === "admin" || requesterRole === "host";
+    if (!isPrivileged && String(oldSub.user_id) !== String(requesterId)) {
+      await connection.rollback();
+      return res.status(403).json({ error: "คุณไม่มีสิทธิ์แก้ไขการส่งงานนี้" });
+    }
 
     if (created_at) {
       await connection.query(
@@ -398,7 +425,7 @@ router.get("/all", async (req, res) => {
 });
 
 // Admin Route: Bulk update status
-router.patch("/bulk-status", async (req, res) => {
+router.patch("/bulk-status", requireAdmin, async (req, res) => {
   const adminId = req.headers["x-user-id"];
   const { ids, status, note } = req.body;
 
@@ -489,7 +516,7 @@ router.patch("/bulk-status", async (req, res) => {
 });
 
 // Admin Route: Update status (Approve/Reject)
-router.patch("/:id/status", async (req, res) => {
+router.patch("/:id/status", requireAdmin, async (req, res) => {
   const adminId = req.headers["x-user-id"];
   const { status, note } = req.body; // status: 'approved' | 'rejected'
   const { id } = req.params;
@@ -623,7 +650,7 @@ router.patch("/:id/status", async (req, res) => {
 });
 
 // Admin Route: Delete a submission (Requested: specifically for rejected ones)
-router.delete("/submission/:id", async (req, res) => {
+router.delete("/submission/:id", requireAdmin, async (req, res) => {
   const { id } = req.params;
   const adminId = req.headers["x-user-id"];
 

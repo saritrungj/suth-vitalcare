@@ -48,7 +48,9 @@ const onRedeem = async (reward: Reward) => {
   if (res.ok) {
     uiStore.toast("success", "แลกสำเร็จ", "รอแอดมินยืนยันการมอบของรางวัล");
     tab.value = "history";
-  } else {
+  } else if (res.error) {
+    // Empty error = a redeem was already in flight; that click is a no-op,
+    // not a failure worth surfacing.
     uiStore.toast("error", "ไม่สำเร็จ", res.error);
   }
 };

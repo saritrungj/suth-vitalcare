@@ -10,6 +10,33 @@ const router = express.Router();
 const generateRoomCode = () =>
   Math.random().toString(36).substring(2, 8).toUpperCase();
 
+/**
+ * Join/join-by-code/leave accept a `userId` in the body because admins move
+ * *other* users between teams (useAdminOverview.ts, useAdminTeam.ts) — so we
+ * can't just force userId = x-user-id like the create-team route. Instead,
+ * require the caller to either BE that user or be an admin. Previously there
+ * was no check at all: any request could move an arbitrary victim into/out of
+ * any team by supplying their id in the body.
+ */
+// Returns null when authorized, or a { status, error } to send back otherwise.
+// (Not a discriminated union — this repo doesn't set `strict` in
+// tsconfig.json, and without strictNullChecks TS fails to narrow a boolean
+// literal discriminant here, so a nullable return keeps this simple.)
+async function authorizeActingOnUser(
+  req: express.Request,
+  targetUserId: unknown,
+): Promise<{ status: number; error: string } | null> {
+  const requesterId = req.headers["x-user-id"];
+  if (!requesterId) return { status: 401, error: "Unauthorized" };
+  if (String(requesterId) === String(targetUserId)) return null;
+
+  const [rows]: any = await pool.query("SELECT role FROM users WHERE id = ?", [
+    requesterId,
+  ]);
+  if (rows[0]?.role === "admin") return null;
+  return { status: 403, error: "คุณไม่มีสิทธิ์ทำรายการนี้ให้ผู้ใช้อื่น" };
+}
+
 router.get("/ping", (req, res) => res.send("pong"));
 
 // Get all teams (for searching)
@@ -84,14 +111,14 @@ router.get("/", async (req, res) => {
 
 // Create a new team
 router.post("/", async (req, res) => {
-  const {
-    name,
-    maxMembers,
-    isPrivate,
-    password,
-    hostId,
-    code: customCode,
-  } = req.body;
+  const { name, maxMembers, isPrivate, password, code: customCode } = req.body;
+  // Host is always the creator — take it from the auth header, not the body.
+  // The frontend only ever sends its own id here (CreateTeams.vue), so this
+  // is a drop-in fix; trusting req.body.hostId would let anyone create a team
+  // "hosted" by an arbitrary victim, silently promoting that victim to
+  // role='host' and moving them into the new team.
+  const hostId = req.headers["x-user-id"];
+  if (!hostId) return res.status(401).json({ error: "Unauthorized" });
   let code = (customCode || "").trim().toUpperCase();
 
   // Only generate a random code if it's private and no code is provided
@@ -162,6 +189,9 @@ router.post("/join", async (req, res) => {
   const { teamId, userId } = req.body;
 
   try {
+    const auth = await authorizeActingOnUser(req, userId);
+    if (auth) return res.status(auth.status).json({ error: auth.error });
+
     // 1. Check if team exists
     const [teamRows]: any = await pool.query(
       "SELECT * FROM teams WHERE id = ?",
@@ -203,6 +233,9 @@ router.post("/join-by-code", async (req, res) => {
   const { code, userId } = req.body;
 
   try {
+    const auth = await authorizeActingOnUser(req, userId);
+    if (auth) return res.status(auth.status).json({ error: auth.error });
+
     const [teamRows]: any = await pool.query(
       "SELECT * FROM teams WHERE code = ?",
       [code?.toUpperCase()],
@@ -240,6 +273,9 @@ router.post("/join-by-code", async (req, res) => {
 router.post("/leave", async (req, res) => {
   const { userId } = req.body;
   if (!userId) return res.status(400).json({ error: "Missing userId" });
+
+  const auth = await authorizeActingOnUser(req, userId);
+  if (auth) return res.status(auth.status).json({ error: auth.error });
 
   const connection = await pool.getConnection();
   try {

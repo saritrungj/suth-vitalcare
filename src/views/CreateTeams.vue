@@ -22,6 +22,7 @@ import {
   Heart,
   Activity,
   Star,
+  Pencil,
 } from "lucide-vue-next";
 import { swal, showSuccess, showError } from "../lib/swal";
 import { useRealtime } from "../composables/useRealtime";
@@ -137,6 +138,10 @@ const newRoomForm = ref({
   isPrivate: false,
   code: "",
 });
+const maxMembersPresets = [2, 3, 4, 5, 6];
+const isCustomMaxMembers = computed(
+  () => !maxMembersPresets.includes(newRoomForm.value.maxMembers),
+);
 const joinStep = ref(1);
 const joinTargetName = ref("");
 const openJoinModal = (initialRoom = null) => {
@@ -235,6 +240,17 @@ const handleCreateRoom = async () => {
       langStore.locale === "th"
         ? "กรุณาระบุ PIN ควบคุมห้องให้ครบ 6 หลัก"
         : "Please enter a 6-digit PIN",
+    );
+  }
+  if (
+    !Number.isInteger(newRoomForm.value.maxMembers) ||
+    newRoomForm.value.maxMembers < 2
+  ) {
+    return showToast(
+      "error",
+      langStore.locale === "th"
+        ? "จำนวนสมาชิกสูงสุดต้องเป็นจำนวนเต็มตั้งแต่ 2 คนขึ้นไป"
+        : "Max members must be a whole number of 2 or more",
     );
   }
   if (!currentUser.value.id) return router.push("/login");
@@ -719,14 +735,39 @@ watch(
                 }}</label>
                 <div class="num-grid">
                   <button
-                    v-for="n in [2, 3, 4, 5, 6]"
+                    v-for="n in maxMembersPresets"
                     :key="n"
                     @click="newRoomForm.maxMembers = n"
-                    :class="{ active: newRoomForm.maxMembers === n }"
+                    :class="{
+                      active:
+                        !isCustomMaxMembers && newRoomForm.maxMembers === n,
+                    }"
                     class="num-btn"
                   >
                     {{ n }}
                   </button>
+                </div>
+                <div
+                  class="custom-max-row"
+                  :class="{ active: isCustomMaxMembers }"
+                >
+                  <span class="custom-max-tag">
+                    <Pencil :size="13" />
+                    {{ langStore.locale === "th" ? "กำหนดเอง" : "Custom" }}
+                  </span>
+                  <input
+                    class="custom-max-input"
+                    type="number"
+                    min="2"
+                    max="999"
+                    step="1"
+                    v-model.number="newRoomForm.maxMembers"
+                    :placeholder="
+                      langStore.locale === 'th'
+                        ? 'พิมพ์จำนวนคน...'
+                        : 'Type a number...'
+                    "
+                  />
                 </div>
               </div>
             </div>
@@ -1470,6 +1511,55 @@ watch(
   border-color: #ff6a00 !important;
   color: #fff !important;
   box-shadow: 0 4px 12px rgba(255, 106, 0, 0.3);
+}
+.custom-max-row {
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 8px 8px 4px;
+  border-radius: 12px;
+  border: 1.5px dashed var(--border);
+  background: #f8fafc;
+  transition: 0.2s;
+}
+.custom-max-row.active {
+  border-style: solid;
+  border-color: var(--primary);
+  background: var(--primary-light);
+}
+.custom-max-tag {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  padding: 6px 10px;
+  border-radius: 50px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  background: #fff;
+  border: 1px solid var(--border);
+  white-space: nowrap;
+}
+.custom-max-row.active .custom-max-tag {
+  color: var(--primary);
+  border-color: var(--primary);
+}
+.custom-max-input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-main);
+  outline: none;
+  font-family: inherit;
+}
+.custom-max-input::placeholder {
+  font-weight: 500;
+  color: #94a3b8;
 }
 .otp-line {
   display: flex;

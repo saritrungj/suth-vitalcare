@@ -9,9 +9,12 @@ import {
 } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import Navbar from "./components/Navbar.vue";
+import InstallAppBanner from "./components/common/InstallAppBanner.vue";
 import { authStore } from "./store/auth";
 import { uiStore } from "./store/ui";
+import { langStore } from "./store/lang";
 import { logoutLiff } from "./lib/liff";
+import { startVersionWatch } from "./lib/versionCheck";
 import { useRealtime } from "./composables/useRealtime";
 import {
   AlertTriangle,
@@ -28,6 +31,7 @@ const route = useRoute();
 const router = useRouter();
 const appError = ref<any>(null);
 const isRouterReady = ref(false);
+let stopVersionWatch: (() => void) | null = null;
 // Error Boundary Handler: เปลี่ยน "จอขาว" ให้เป็น "หน้าสวยๆ ให้กด"
 onErrorCaptured((err, instance, info) => {
   uiStore.errorState = {
@@ -155,21 +159,39 @@ onMounted(async () => {
     { immediate: true },
   );
   // รอให้ Router เตรียมความพร้อมเพื่อป้องกัน UI กระตุก/เนฟบาร์แวบ
-  // เพิ่ม Safety Timeout 5 วินาที เดี๋ยวมันค้างหน้าโหลด (แก้ปัญหาเครื่องช้า/เน็ตเน่า)
+  // Safety timeout สำรองสุดท้าย เผื่อ initLiff() ค้างโดยไม่คาดคิด — ตัว liff.init()
+  // เองมี timeout ภายใน 8s อยู่แล้ว (src/lib/liff.ts) ตัวนี้จึงต้องนานกว่านั้นเสมอ
+  // ไม่งั้นจะไปแข่งกับ initLiff() ที่ยังทำงานอยู่จริงและทำให้ router ปล่อยผู้ใช้ออกไป
+  // ก่อนเวลา (เคยทำให้ auto-login ของ LIFF มาทับ session ที่เพิ่ง login สำเร็จทีหลัง)
   const safetyTimer = setTimeout(() => {
     if (!isRouterReady.value) {
       isRouterReady.value = true;
       authStore.loading = false;
     }
-  }, 5000);
+  }, 10000);
   try {
     await router.isReady();
     isRouterReady.value = true;
   } finally {
     clearTimeout(safetyTimer);
   }
+  // ตรวจเวอร์ชันใหม่: ถ้ามี deploy ใหม่ เด้ง toast ค้างไว้ให้กด "โหลดใหม่"
+  stopVersionWatch = startVersionWatch(() => {
+    uiStore.toast(
+      "info",
+      langStore.t("update_available_title"),
+      langStore.t("update_available_text"),
+      {
+        duration: -1,
+        actionLabel: langStore.t("reload_now"),
+        onAction: () => window.location.reload(),
+      },
+    );
+  });
 });
-onUnmounted(() => {});
+onUnmounted(() => {
+  stopVersionWatch?.();
+});
 </script>
 <template>
   <!-- Full Screen Initial Loading - แสดงจนกว่า Auth และ Router จะพร้อมจริงๆ -->
@@ -377,6 +399,7 @@ onUnmounted(() => {});
         ></div>
       </div>
     </Transition>
+    <InstallAppBanner v-if="!route.meta.hideNavbar" />
   </div>
 </template>
 <style>

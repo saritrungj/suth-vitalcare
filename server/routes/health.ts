@@ -82,7 +82,9 @@ router.get("/forms/:id", async (req, res) => {
 });
 
 // 3. Create or Update health form
-router.post("/forms", async (req, res) => {
+// No frontend caller currently, but still mounted and reachable — previously
+// unauthenticated, letting anyone create/edit health forms over raw HTTP.
+router.post("/forms", requireAdmin, async (req, res) => {
   // NOTE: This mirrors the front-end logic acting specifically for health forms,
   // keeping the "category='health'" flag behind the scenes.
   const { id, title, description, form_image, questions } = req.body;
@@ -149,8 +151,23 @@ router.post("/forms", async (req, res) => {
 });
 
 // 4. Submit form response
+// No frontend caller currently (Health.vue posts to /save-assessment
+// instead), but still mounted and reachable — previously unauthenticated.
 router.post("/submissions", async (req, res) => {
   const { form_id, user_id, answers } = req.body;
+  const requesterId = req.headers["x-user-id"];
+  if (!requesterId) return res.status(401).json({ error: "Unauthorized" });
+  if (String(requesterId) !== String(user_id)) {
+    const [reqRows]: any = await pool.query(
+      "SELECT role FROM users WHERE id = ?",
+      [requesterId],
+    );
+    if (reqRows[0]?.role !== "admin") {
+      return res
+        .status(403)
+        .json({ error: "คุณไม่มีสิทธิ์ส่งคำตอบในนามผู้ใช้อื่น" });
+    }
+  }
 
   const connection = await pool.getConnection();
   try {
@@ -213,6 +230,25 @@ router.post("/save-assessment", async (req, res) => {
     activityId,
     assessmentType,
   } = req.body;
+
+  // This is the live endpoint Health.vue submits the 3อ2ส assessment to, and
+  // it also awards points (awardAssessment below). Previously userId came
+  // straight from the body with no check at all, so anyone could post a fake
+  // assessment — and farm points — for an arbitrary victim account.
+  const requesterId = req.headers["x-user-id"];
+  if (!requesterId) return res.status(401).json({ error: "Unauthorized" });
+  if (String(requesterId) !== String(userId)) {
+    const [reqRows]: any = await pool.query(
+      "SELECT role FROM users WHERE id = ?",
+      [requesterId],
+    );
+    if (reqRows[0]?.role !== "admin") {
+      return res
+        .status(403)
+        .json({ error: "คุณไม่มีสิทธิ์บันทึกแบบประเมินในนามผู้ใช้อื่น" });
+    }
+  }
+
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();

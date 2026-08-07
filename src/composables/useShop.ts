@@ -63,6 +63,9 @@ export function useShop() {
   /** Redeem a reward. Returns { ok, error }. Updates local balance on success. */
   const redeem = async (reward: Reward) => {
     if (!authStore.user?.id) return { ok: false, error: "กรุณาเข้าสู่ระบบ" };
+    // Guard against a double-click firing two overlapping redeem requests
+    // for the same (or a different) reward before the first settles.
+    if (redeeming.value) return { ok: false, error: "" };
     redeeming.value = reward.id;
     try {
       const res = await fetch("/api/items/redeem", {

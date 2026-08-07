@@ -47,6 +47,11 @@ const toast = {
 };
 const props = defineProps<{ initialData?: any }>();
 const socialData = ref<any>(null);
+// สมัครแบบ username/password ล้วน (ไม่ได้มาจาก LINE หรือ social login) —
+// เฉพาะกรณีนี้จึงต้องให้ผู้ใช้ตั้ง username/password เอง (Step 1)
+const isPureSignup = computed(
+  () => !authStore.user && !socialData.value?.provider,
+);
 const emit = defineEmits(["goToLogin", "goToHome"]);
 const router = useRouter();
 const step = ref(1);
@@ -93,7 +98,9 @@ const formData = ref({
   dob: "",
   phone: "",
   email: "",
+  username: "",
   password: "",
+  confirmPassword: "",
   userType: "",
   faculty: "",
   year: "",
@@ -347,6 +354,27 @@ const goalsOptions = computed(() =>
 );
 const nextStep = () => {
   if (step.value === 1) {
+    // Pure username/password signup — ตรวจ username/password ก่อน (Step 1)
+    if (isPureSignup.value) {
+      const uname = formData.value.username.trim();
+      if (!/^[a-zA-Z0-9._-]{4,30}$/.test(uname)) {
+        toast.warning(
+          "ชื่อผู้ใช้ต้องมี 4-30 ตัวอักษร (a-z, A-Z, 0-9, . _ - เท่านั้น)",
+        );
+        scrollToElement("username_input");
+        return;
+      }
+      if (!formData.value.password || formData.value.password.length < 8) {
+        toast.warning("รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร");
+        scrollToElement("password_input");
+        return;
+      }
+      if (formData.value.password !== formData.value.confirmPassword) {
+        toast.warning("รหัสผ่านและการยืนยันรหัสผ่านไม่ตรงกัน");
+        scrollToElement("confirm_password_input");
+        return;
+      }
+    }
     // Basic fields to check
     const requiredFields: Array<{
       id: string;
@@ -520,6 +548,56 @@ const handleBackTop = () => {
     router.push("/login");
   }
 };
+/**
+ * สร้างบัญชีถ้ายังไม่มี (authStore.user ว่าง)
+ * - Pure signup: ใช้ username + password ที่ผู้ใช้ตั้งเอง (email ใส่ได้ถ้ามี)
+ * - Social signup: คงพฤติกรรมเดิม (email-based + password ปลอมสำหรับ social)
+ */
+const ensureAccountCreated = async (API_URL: string) => {
+  if (authStore.user) return;
+
+  const isSocial = !!socialData.value?.provider;
+  const regBody: Record<string, any> = {
+    fname_th: formData.value.firstName || "",
+  };
+
+  if (isSocial) {
+    regBody.email = (
+      socialData.value?.email ||
+      formData.value.email ||
+      (formData.value.phone ? formData.value.phone + "@vitalcare.com" : "")
+    ).trim();
+    regBody.password = (formData.value.password || "social_account").trim();
+  } else {
+    regBody.username = (formData.value.username || "").trim();
+    regBody.password = formData.value.password || "";
+    const em = (formData.value.email || "").trim();
+    if (em) regBody.email = em;
+  }
+
+  if (!regBody.username && !regBody.email) {
+    throw new Error("กรุณากรอกข้อมูลให้ครบถ้วน");
+  }
+
+  const regRes = await fetch(`${API_URL}/users/register-email`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(regBody),
+  });
+
+  if (regRes.ok) {
+    const newUserData = await regRes.json();
+    authStore.setUser(newUserData);
+    localStorage.setItem("vitalcare_user", JSON.stringify(newUserData));
+  } else {
+    const errorData = await regRes.json();
+    throw new Error(
+      errorData.error ||
+        "สมัครสมาชิกไม่สำเร็จ — ชื่อผู้ใช้หรืออีเมลนี้อาจถูกใช้งานแล้ว",
+    );
+  }
+};
+
 const submitForm = async () => {
   // Step 2 Validations
   if (!formData.value.height) {
@@ -538,42 +616,7 @@ const submitForm = async () => {
   isSubmitting.value = true;
   try {
     const API_URL = (import.meta as any).env.VITE_API_URL || "/api";
-    if (!authStore.user) {
-      const userEmail = (
-        socialData.value?.email ||
-        formData.value.email ||
-        (formData.value.phone ? formData.value.phone + "@vitalcare.com" : "")
-      ).trim();
-      const userPwd = (
-        formData.value.password ||
-        (socialData.value?.provider
-          ? "social_account"
-          : formData.value.phone || "password123")
-      ).trim();
-      if (!userEmail) {
-        throw new Error("กรุณากรอกข้อมูลให้ครบถ้วน");
-      }
-      const regRes = await fetch(`${API_URL}/users/register-email`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email: userEmail,
-          password: userPwd,
-          fname_th: formData.value.firstName || "",
-        }),
-      });
-      if (regRes.ok) {
-        const newUserData = await regRes.json();
-        authStore.setUser(newUserData);
-        localStorage.setItem("vitalcare_user", JSON.stringify(newUserData));
-      } else {
-        const errorData = await regRes.json();
-        throw new Error(
-          errorData.error ||
-            "อีเมลนี้ถูกใช้งานแล้ว หรือ ล้มเหลวในการสร้างบัญชี",
-        );
-      }
-    }
+    await ensureAccountCreated(API_URL);
     if (authStore.user) {
       let roleDetail1 = "";
       let roleDetail2 = "";
@@ -709,42 +752,7 @@ const skipStep2 = async () => {
       step.value = 1;
       return;
     }
-    if (!authStore.user) {
-      const userEmail = (
-        socialData.value?.email ||
-        formData.value.email ||
-        (formData.value.phone ? formData.value.phone + "@vitalcare.com" : "")
-      ).trim();
-      const userPwd = (
-        formData.value.password ||
-        (socialData.value?.provider
-          ? "social_account"
-          : formData.value.phone || "password123")
-      ).trim();
-      if (!userEmail) {
-        throw new Error("กรุณากรอกข้อมูลให้ครบถ้วน");
-      }
-      const regRes = await fetch(`${API_URL}/users/register-email`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email: userEmail,
-          password: userPwd,
-          fname_th: formData.value.firstName,
-        }),
-      });
-      if (regRes.ok) {
-        const newUserData = await regRes.json();
-        authStore.setUser(newUserData);
-        localStorage.setItem("vitalcare_user", JSON.stringify(newUserData));
-      } else {
-        const errorData = await regRes.json();
-        throw new Error(
-          errorData.error ||
-            "อีเมลนี้ถูกใช้งานแล้ว หรือ ล้มเหลวในการสร้างบัญชี",
-        );
-      }
-    }
+    await ensureAccountCreated(API_URL);
     if (authStore.user) {
       let roleDetail1 = "";
       let roleDetail2 = "";
@@ -1043,6 +1051,60 @@ const handlePaste = (e: ClipboardEvent) => {
           }}
           {{ socialData.provider }}
         </div>
+        <!-- ข้อมูลบัญชีเข้าสู่ระบบ — เฉพาะสมัครแบบ username/password ล้วน
+             (ซ่อนเมื่อมาจาก LINE หรือ social login) -->
+        <template v-if="isPureSignup">
+          <h3 class="section-title mt-4">
+            {{
+              langStore.locale === "th"
+                ? "ข้อมูลบัญชีเข้าสู่ระบบ"
+                : "Login Account"
+            }}
+          </h3>
+          <div class="premium-input-group">
+            <input
+              id="username_input"
+              type="text"
+              v-model="formData.username"
+              placeholder=" "
+              autocomplete="username"
+              required
+            />
+            <label>{{
+              langStore.locale === "th" ? "ชื่อผู้ใช้ (Username)" : "Username"
+            }}</label>
+          </div>
+          <div class="grid-2">
+            <div class="premium-input-group">
+              <input
+                id="password_input"
+                type="password"
+                v-model="formData.password"
+                placeholder=" "
+                autocomplete="new-password"
+                required
+              />
+              <label>{{
+                langStore.locale === "th" ? "รหัสผ่าน" : "Password"
+              }}</label>
+            </div>
+            <div class="premium-input-group">
+              <input
+                id="confirm_password_input"
+                type="password"
+                v-model="formData.confirmPassword"
+                placeholder=" "
+                autocomplete="new-password"
+                required
+              />
+              <label>{{
+                langStore.locale === "th"
+                  ? "ยืนยันรหัสผ่าน"
+                  : "Confirm Password"
+              }}</label>
+            </div>
+          </div>
+        </template>
         <h3 class="section-title mt-4">
           {{
             langStore.locale === "th" ? "ข้อมูลส่วนตัว" : "Personal Information"

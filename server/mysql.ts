@@ -1,6 +1,6 @@
 import mysql from "mysql2/promise";
-import dotenv from "dotenv";
-dotenv.config();
+// โหลด env จาก .env ก่อนสร้าง pool
+import "./loadEnv.js";
 
 // Create a connection pool instead of a single connection for better performance and concurrency
 export const pool = mysql.createPool({

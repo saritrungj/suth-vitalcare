@@ -764,276 +764,284 @@
                 </div>
               </div>
             </div>
-            <div v-if="goalLoading" class="goal-loading p-8 flex-center">
+            <template v-if="SHOW_PARTICIPANT_LEADERBOARD">
+              <div v-if="goalLoading" class="goal-loading p-8 flex-center">
+                <div
+                  class="spin-lg border-t-orange-500 border-4 border-slate-200 rounded-full w-8 h-8"
+                ></div>
+              </div>
               <div
-                class="spin-lg border-t-orange-500 border-4 border-slate-200 rounded-full w-8 h-8"
-              ></div>
-            </div>
-            <div
-              v-else-if="goalData.length === 0"
-              class="goal-empty p-8 text-center text-slate-400"
-            >
-              {{
-                langStore.locale === "th"
-                  ? "ยังไม่มีข้อมูลผู้เข้าร่วม"
-                  : "No participant data yet"
-              }}
-            </div>
-            <div v-else class="goal-table-container mt-6">
-              <div class="gt-controls flex flex-col sm:flex-row gap-3 mb-4">
-                <div
-                  class="gt-search-box flex-1 flex items-center bg-white shadow-sm rounded-lg px-3 border border-slate-100 focus-within:border-orange-400"
-                >
-                  <SearchIcon :size="16" class="text-slate-400 flex-shrink-0" />
-                  <input
-                    v-model="goalSearchQuery"
-                    :placeholder="
-                      langStore.locale === 'th'
-                        ? 'ค้นหาชื่อ...'
-                        : 'Search name...'
-                    "
-                    class="w-full bg-transparent border-none p-2 outline-none text-sm"
-                    @input="goalCurrentPage = 1"
-                  />
-                </div>
-                <div
-                  class="gt-sort-container relative flex-shrink-0 min-w-[180px] sm:min-w-[220px]"
-                >
-                  <button
-                    @click.stop="isSortDropdownOpen = !isSortDropdownOpen"
-                    class="w-full flex items-center justify-between gap-2 px-4 py-2.5 bg-white border border-slate-100 rounded-xl hover:border-orange-400 transition-all text-sm font-bold text-slate-700 shadow-sm"
+                v-else-if="goalData.length === 0"
+                class="goal-empty p-8 text-center text-slate-400"
+              >
+                {{
+                  langStore.locale === "th"
+                    ? "ยังไม่มีข้อมูลผู้เข้าร่วม"
+                    : "No participant data yet"
+                }}
+              </div>
+              <div v-else class="goal-table-container mt-6">
+                <div class="gt-controls flex flex-col sm:flex-row gap-3 mb-4">
+                  <div
+                    class="gt-search-box flex-1 flex items-center bg-white shadow-sm rounded-lg px-3 border border-slate-100 focus-within:border-orange-400"
                   >
-                    <div class="flex items-center gap-2.5 min-w-0">
-                      <TrendingUpIcon
-                        v-if="goalSortBy === 'progress_desc'"
-                        :size="16"
-                        class="text-orange-500 flex-shrink-0"
-                      />
-                      <TrendingDownIcon
-                        v-else-if="goalSortBy === 'progress_asc'"
-                        :size="16"
-                        class="text-orange-500 flex-shrink-0"
-                      />
-                      <TrophyIcon
-                        v-else-if="goalSortBy === 'points_desc'"
-                        :size="16"
-                        class="text-orange-500 flex-shrink-0"
-                      />
-                      <TargetIcon
-                        v-else-if="goalSortBy === 'points_asc'"
-                        :size="16"
-                        class="text-orange-500 flex-shrink-0"
-                      />
-                      <UserIcon
-                        v-else
-                        :size="16"
-                        class="text-orange-500 flex-shrink-0"
-                      />
-                      <span class="truncate">{{ currentSortLabel }}</span>
-                    </div>
-                    <ChevronRightIcon
+                    <SearchIcon
                       :size="16"
-                      class="text-slate-400 transition-transform duration-300 flex-shrink-0"
-                      :class="{ 'rotate-90': isSortDropdownOpen }"
+                      class="text-slate-400 flex-shrink-0"
                     />
-                  </button>
-                  <transition name="fade">
-                    <div
-                      v-if="isSortDropdownOpen"
-                      class="absolute right-0 top-full mt-2 w-full min-w-[200px] bg-white border border-slate-100 rounded-2xl shadow-2xl z-[100] overflow-hidden py-1.5 animate-in slide-in-top"
+                    <input
+                      v-model="goalSearchQuery"
+                      :placeholder="
+                        langStore.locale === 'th'
+                          ? 'ค้นหาชื่อ...'
+                          : 'Search name...'
+                      "
+                      class="w-full bg-transparent border-none p-2 outline-none text-sm"
+                      @input="goalCurrentPage = 1"
+                    />
+                  </div>
+                  <div
+                    class="gt-sort-container relative flex-shrink-0 min-w-[180px] sm:min-w-[220px]"
+                  >
+                    <button
+                      @click.stop="isSortDropdownOpen = !isSortDropdownOpen"
+                      class="w-full flex items-center justify-between gap-2 px-4 py-2.5 bg-white border border-slate-100 rounded-xl hover:border-orange-400 transition-all text-sm font-bold text-slate-700 shadow-sm"
                     >
-                      <div
-                        v-for="opt in sortOptions"
-                        :key="opt.value"
-                        @click.stop="selectSort(opt.value)"
-                        class="px-4 py-3 text-sm font-bold flex items-center gap-3 cursor-pointer transition-all hover:bg-orange-50 border-b border-slate-50 last:border-0"
-                        :class="
-                          goalSortBy === opt.value
-                            ? 'text-orange-600 bg-orange-50'
-                            : 'text-slate-600'
-                        "
-                      >
+                      <div class="flex items-center gap-2.5 min-w-0">
                         <TrendingUpIcon
-                          v-if="opt.value === 'progress_desc'"
+                          v-if="goalSortBy === 'progress_desc'"
                           :size="16"
-                          class="flex-shrink-0"
-                          :class="
-                            goalSortBy === opt.value
-                              ? 'text-orange-600'
-                              : 'text-slate-400'
-                          "
+                          class="text-orange-500 flex-shrink-0"
                         />
                         <TrendingDownIcon
-                          v-else-if="opt.value === 'progress_asc'"
+                          v-else-if="goalSortBy === 'progress_asc'"
                           :size="16"
-                          class="flex-shrink-0"
-                          :class="
-                            goalSortBy === opt.value
-                              ? 'text-orange-600'
-                              : 'text-slate-400'
-                          "
+                          class="text-orange-500 flex-shrink-0"
                         />
                         <TrophyIcon
-                          v-else-if="opt.value === 'points_desc'"
+                          v-else-if="goalSortBy === 'points_desc'"
                           :size="16"
-                          class="flex-shrink-0"
-                          :class="
-                            goalSortBy === opt.value
-                              ? 'text-orange-600'
-                              : 'text-slate-400'
-                          "
+                          class="text-orange-500 flex-shrink-0"
                         />
                         <TargetIcon
-                          v-else-if="opt.value === 'points_asc'"
+                          v-else-if="goalSortBy === 'points_asc'"
                           :size="16"
-                          class="flex-shrink-0"
-                          :class="
-                            goalSortBy === opt.value
-                              ? 'text-orange-600'
-                              : 'text-slate-400'
-                          "
+                          class="text-orange-500 flex-shrink-0"
                         />
                         <UserIcon
                           v-else
                           :size="16"
-                          class="flex-shrink-0"
+                          class="text-orange-500 flex-shrink-0"
+                        />
+                        <span class="truncate">{{ currentSortLabel }}</span>
+                      </div>
+                      <ChevronRightIcon
+                        :size="16"
+                        class="text-slate-400 transition-transform duration-300 flex-shrink-0"
+                        :class="{ 'rotate-90': isSortDropdownOpen }"
+                      />
+                    </button>
+                    <transition name="fade">
+                      <div
+                        v-if="isSortDropdownOpen"
+                        class="absolute right-0 top-full mt-2 w-full min-w-[200px] bg-white border border-slate-100 rounded-2xl shadow-2xl z-[100] overflow-hidden py-1.5 animate-in slide-in-top"
+                      >
+                        <div
+                          v-for="opt in sortOptions"
+                          :key="opt.value"
+                          @click.stop="selectSort(opt.value)"
+                          class="px-4 py-3 text-sm font-bold flex items-center gap-3 cursor-pointer transition-all hover:bg-orange-50 border-b border-slate-50 last:border-0"
                           :class="
                             goalSortBy === opt.value
-                              ? 'text-orange-600'
-                              : 'text-slate-400'
+                              ? 'text-orange-600 bg-orange-50'
+                              : 'text-slate-600'
                           "
-                        />
-                        <span class="flex-1">{{ opt.label }}</span>
-                        <CheckCircleIcon
-                          v-if="goalSortBy === opt.value"
-                          :size="16"
-                          class="text-orange-500"
-                        />
+                        >
+                          <TrendingUpIcon
+                            v-if="opt.value === 'progress_desc'"
+                            :size="16"
+                            class="flex-shrink-0"
+                            :class="
+                              goalSortBy === opt.value
+                                ? 'text-orange-600'
+                                : 'text-slate-400'
+                            "
+                          />
+                          <TrendingDownIcon
+                            v-else-if="opt.value === 'progress_asc'"
+                            :size="16"
+                            class="flex-shrink-0"
+                            :class="
+                              goalSortBy === opt.value
+                                ? 'text-orange-600'
+                                : 'text-slate-400'
+                            "
+                          />
+                          <TrophyIcon
+                            v-else-if="opt.value === 'points_desc'"
+                            :size="16"
+                            class="flex-shrink-0"
+                            :class="
+                              goalSortBy === opt.value
+                                ? 'text-orange-600'
+                                : 'text-slate-400'
+                            "
+                          />
+                          <TargetIcon
+                            v-else-if="opt.value === 'points_asc'"
+                            :size="16"
+                            class="flex-shrink-0"
+                            :class="
+                              goalSortBy === opt.value
+                                ? 'text-orange-600'
+                                : 'text-slate-400'
+                            "
+                          />
+                          <UserIcon
+                            v-else
+                            :size="16"
+                            class="flex-shrink-0"
+                            :class="
+                              goalSortBy === opt.value
+                                ? 'text-orange-600'
+                                : 'text-slate-400'
+                            "
+                          />
+                          <span class="flex-1">{{ opt.label }}</span>
+                          <CheckCircleIcon
+                            v-if="goalSortBy === opt.value"
+                            :size="16"
+                            class="text-orange-500"
+                          />
+                        </div>
                       </div>
-                    </div>
-                  </transition>
+                    </transition>
+                  </div>
                 </div>
-              </div>
-              <div class="gt-rows flex flex-col gap-2">
-                <div
-                  v-for="item in paginatedGoalData"
-                  :key="item.id"
-                  class="gt-row flex items-center p-3 bg-white border border-slate-100 rounded-xl shadow-sm transition hover:border-orange-200"
-                  :class="{
-                    '!border-orange-400 bg-orange-50': isGoalCurrentUser(item),
-                  }"
-                >
+                <div class="gt-rows flex flex-col gap-2">
                   <div
-                    class="gt-col col-rank w-8 text-center font-bold text-slate-500 flex-shrink-0"
-                  >
-                    {{ getOriginalRank(item) }}
-                  </div>
-                  <div
-                    class="gt-col col-user flex-1 flex items-center gap-3 min-w-0"
+                    v-for="item in paginatedGoalData"
+                    :key="item.id"
+                    class="gt-row flex items-center p-3 bg-white border border-slate-100 rounded-xl shadow-sm transition hover:border-orange-200"
+                    :class="{
+                      '!border-orange-400 bg-orange-50':
+                        isGoalCurrentUser(item),
+                    }"
                   >
                     <div
-                      class="w-10 h-10 rounded-full bg-slate-200 overflow-hidden flex-center text-slate-500 font-bold flex-shrink-0"
+                      class="gt-col col-rank w-8 text-center font-bold text-slate-500 flex-shrink-0"
                     >
-                      <img
-                        v-if="item.picture_url || item.image"
-                        :src="item.picture_url || item.image"
-                        class="w-full h-full object-cover"
-                      />
-                      <span v-else>{{
-                        (getGoalName(item)?.[0] || "?").toUpperCase()
-                      }}</span>
-                    </div>
-                    <div class="min-w-0">
-                      <div class="font-bold text-slate-800 text-sm truncate">
-                        {{ getGoalName(item) }}
-                      </div>
-                      <span
-                        v-if="isGoalCurrentUser(item)"
-                        class="text-[10px] bg-orange-200 text-orange-800 px-2 py-0.5 rounded uppercase inline-block mt-0.5"
-                        >{{
-                          langStore.locale === "th" ? "อันดับของฉัน" : "My Rank"
-                        }}</span
-                      >
-                    </div>
-                  </div>
-                  <div
-                    class="gt-col col-progress w-24 sm:w-32 md:w-48 px-2 flex-shrink-0 min-w-0"
-                  >
-                    <div
-                      class="flex justify-between text-[10px] sm:text-xs font-bold mb-1"
-                    >
-                      <span class="text-slate-800">{{
-                        Number(item.achieved || 0).toLocaleString("th-TH")
-                      }}</span>
-                      <span class="text-slate-400 truncate ml-1"
-                        >/
-                        {{
-                          Number(item.target || 0).toLocaleString("th-TH")
-                        }}</span
-                      >
+                      {{ getOriginalRank(item) }}
                     </div>
                     <div
-                      class="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden"
+                      class="gt-col col-user flex-1 flex items-center gap-3 min-w-0"
                     >
                       <div
-                        class="h-full bg-primary transition-all"
-                        :style="{
-                          width: `${Math.min(100, item.percent || 0)}%`,
-                        }"
-                      ></div>
+                        class="w-10 h-10 rounded-full bg-slate-200 overflow-hidden flex-center text-slate-500 font-bold flex-shrink-0"
+                      >
+                        <img
+                          v-if="item.picture_url || item.image"
+                          :src="item.picture_url || item.image"
+                          class="w-full h-full object-cover"
+                        />
+                        <span v-else>{{
+                          (getGoalName(item)?.[0] || "?").toUpperCase()
+                        }}</span>
+                      </div>
+                      <div class="min-w-0">
+                        <div class="font-bold text-slate-800 text-sm truncate">
+                          {{ getGoalName(item) }}
+                        </div>
+                        <span
+                          v-if="isGoalCurrentUser(item)"
+                          class="text-[10px] bg-orange-200 text-orange-800 px-2 py-0.5 rounded uppercase inline-block mt-0.5"
+                          >{{
+                            langStore.locale === "th"
+                              ? "อันดับของฉัน"
+                              : "My Rank"
+                          }}</span
+                        >
+                      </div>
                     </div>
-                  </div>
-                  <div
-                    class="gt-col col-status w-16 sm:w-20 text-right pr-1 flex-shrink-0 min-w-0"
-                  >
                     <div
-                      class="text-xs sm:text-sm font-black text-primary truncate"
+                      class="gt-col col-progress w-24 sm:w-32 md:w-48 px-2 flex-shrink-0 min-w-0"
                     >
-                      {{ Number(item.points_achieved || 0).toLocaleString() }}
+                      <div
+                        class="flex justify-between text-[10px] sm:text-xs font-bold mb-1"
+                      >
+                        <span class="text-slate-800">{{
+                          Number(item.achieved || 0).toLocaleString("th-TH")
+                        }}</span>
+                        <span class="text-slate-400 truncate ml-1"
+                          >/
+                          {{
+                            Number(item.target || 0).toLocaleString("th-TH")
+                          }}</span
+                        >
+                      </div>
+                      <div
+                        class="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden"
+                      >
+                        <div
+                          class="h-full bg-primary transition-all"
+                          :style="{
+                            width: `${Math.min(100, item.percent || 0)}%`,
+                          }"
+                        ></div>
+                      </div>
                     </div>
-                    <div class="text-[10px] text-slate-400 font-bold">
-                      {{ langStore.locale === "th" ? "คะแนน" : "Points" }}
+                    <div
+                      class="gt-col col-status w-16 sm:w-20 text-right pr-1 flex-shrink-0 min-w-0"
+                    >
+                      <div
+                        class="text-xs sm:text-sm font-black text-primary truncate"
+                      >
+                        {{ Number(item.points_achieved || 0).toLocaleString() }}
+                      </div>
+                      <div class="text-[10px] text-slate-400 font-bold">
+                        {{ langStore.locale === "th" ? "คะแนน" : "Points" }}
+                      </div>
                     </div>
                   </div>
                 </div>
+                <div
+                  v-if="totalGoalPages > 1"
+                  class="flex justify-center items-center gap-4 mt-6"
+                >
+                  <button
+                    @click="goalCurrentPage--"
+                    :disabled="goalCurrentPage === 1"
+                    class="flex items-center justify-center border border-slate-200 rounded-full hover:bg-slate-50 disabled:opacity-50 text-orange-500 flex-shrink-0"
+                    style="
+                      width: 40px;
+                      height: 40px;
+                      min-width: 40px;
+                      min-height: 40px;
+                      padding: 0 !important;
+                    "
+                  >
+                    <ChevronLeftIcon :size="16" />
+                  </button>
+                  <span class="text-sm font-bold text-slate-600"
+                    >หน้า {{ goalCurrentPage }} / {{ totalGoalPages }}</span
+                  >
+                  <button
+                    @click="goalCurrentPage++"
+                    :disabled="goalCurrentPage === totalGoalPages"
+                    class="flex items-center justify-center border border-slate-200 rounded-full hover:bg-slate-50 disabled:opacity-50 text-orange-500 flex-shrink-0"
+                    style="
+                      width: 40px;
+                      height: 40px;
+                      min-width: 40px;
+                      min-height: 40px;
+                      padding: 0 !important;
+                    "
+                  >
+                    <ChevronRightIcon :size="16" />
+                  </button>
+                </div>
               </div>
-              <div
-                v-if="totalGoalPages > 1"
-                class="flex justify-center items-center gap-4 mt-6"
-              >
-                <button
-                  @click="goalCurrentPage--"
-                  :disabled="goalCurrentPage === 1"
-                  class="flex items-center justify-center border border-slate-200 rounded-full hover:bg-slate-50 disabled:opacity-50 text-orange-500 flex-shrink-0"
-                  style="
-                    width: 40px;
-                    height: 40px;
-                    min-width: 40px;
-                    min-height: 40px;
-                    padding: 0 !important;
-                  "
-                >
-                  <ChevronLeftIcon :size="16" />
-                </button>
-                <span class="text-sm font-bold text-slate-600"
-                  >หน้า {{ goalCurrentPage }} / {{ totalGoalPages }}</span
-                >
-                <button
-                  @click="goalCurrentPage++"
-                  :disabled="goalCurrentPage === totalGoalPages"
-                  class="flex items-center justify-center border border-slate-200 rounded-full hover:bg-slate-50 disabled:opacity-50 text-orange-500 flex-shrink-0"
-                  style="
-                    width: 40px;
-                    height: 40px;
-                    min-width: 40px;
-                    min-height: 40px;
-                    padding: 0 !important;
-                  "
-                >
-                  <ChevronRightIcon :size="16" />
-                </button>
-              </div>
-            </div>
+            </template>
           </div>
         </div>
         <div class="right-column desktop-only-block">
@@ -1674,6 +1682,9 @@ import {
 } from "lucide-vue-next";
 import { useEventDetail } from "../composables/useEventDetail";
 const router = useRouter();
+// The participant leaderboard moved to /rankings (see Rankings.vue).
+// Kept here — not deleted — so it can be restored by flipping this to true.
+const SHOW_PARTICIPANT_LEADERBOARD = false;
 const {
   event,
   loading,

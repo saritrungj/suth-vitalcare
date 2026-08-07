@@ -1,5 +1,6 @@
 import express from "express";
 import { pool } from "../mysql.js";
+import { requireAdmin } from "../middleware/auth.js";
 
 const router = express.Router();
 
@@ -93,7 +94,11 @@ router.get("/:id", async (req, res) => {
 });
 
 // 3. Create or Update form
-router.post("/", async (req, res) => {
+// This router currently has no frontend callers (superseded by health.ts's
+// equivalent, properly-gated routes) but is still mounted and reachable —
+// previously every route here, including this one and DELETE /:id, had no
+// auth check at all, letting anyone create/delete forms over raw HTTP.
+router.post("/", requireAdmin, async (req, res) => {
   const connection = await pool.getConnection();
 
   try {
@@ -205,10 +210,24 @@ router.post("/", async (req, res) => {
 
 // 4. Submit response
 router.post("/submissions", async (req, res) => {
+  const { form_id, user_id, answers } = req.body;
+  const requesterId = req.headers["x-user-id"];
+  if (!requesterId) return res.status(401).json({ error: "Unauthorized" });
+  if (String(requesterId) !== String(user_id)) {
+    const [reqRows]: any = await pool.query(
+      "SELECT role FROM users WHERE id = ?",
+      [requesterId],
+    );
+    if (reqRows[0]?.role !== "admin") {
+      return res
+        .status(403)
+        .json({ error: "คุณไม่มีสิทธิ์ส่งคำตอบในนามผู้ใช้อื่น" });
+    }
+  }
+
   const connection = await pool.getConnection();
 
   try {
-    const { form_id, user_id, answers } = req.body;
     console.log(`[Submission] From user ${user_id} for form ${form_id}`);
 
     await connection.beginTransaction();
@@ -457,7 +476,7 @@ router.get("/:id/submissions", async (req, res) => {
 });
 
 // 6. Delete form
-router.delete("/:id", async (req, res) => {
+router.delete("/:id", requireAdmin, async (req, res) => {
   try {
     // Cascading takes care of form_questions and submissions
     await pool.query("DELETE FROM forms WHERE id = ?", [req.params.id]);

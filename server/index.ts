@@ -1,8 +1,10 @@
+// ต้องมาก่อน import อื่น ๆ เพื่อโหลด env จาก .env ก่อนโมดูลที่อ่าน process.env
+// ตอน import (เช่น ./mysql.js สร้าง pool ทันที)
+import "./loadEnv.js";
 import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
 import { fileURLToPath } from "url";
-import dotenv from "dotenv";
 import multer from "multer";
 import rateLimit from "express-rate-limit";
 import compression from "compression";
@@ -16,8 +18,7 @@ import cors from "cors";
 if (process.argv.includes("--prod")) {
   process.env.NODE_ENV = "production";
 }
-
-dotenv.config();
+// env ถูกโหลดแล้วใน ./loadEnv.js (import ไว้บนสุด)
 
 // Route Imports
 import userRouter from "./routes/user.js";
@@ -35,6 +36,7 @@ import bannersRouter from "./routes/banners.js";
 import certificateRouter from "./routes/certificate.js";
 import healthRouter from "./routes/health.js";
 import logsRouter from "./routes/logs.js";
+import clientLogsRouter from "./routes/clientLogs.js";
 import exportRouter from "./routes/export.js";
 import notificationsRouter from "./routes/notifications.js";
 import registrationRouter from "./routes/registration.js";
@@ -308,6 +310,7 @@ async function startServer() {
   app.use("/api/certificates", certificateRouter);
   app.use("/api/health", healthRouter);
   app.use("/api/logs", logsRouter);
+  app.use("/api/client-logs", clientLogsRouter);
   app.use("/api/export", exportRouter);
   app.use("/api/notifications", notificationsRouter);
 

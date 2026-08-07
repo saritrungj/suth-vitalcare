@@ -6,6 +6,14 @@ coverage/
 *.log
 !.env.example
 
+# Local env overrides (contain machine-specific / dev secrets)
+.env.local
+.env.*.local
+
 # User-generated uploads (runtime files, not tracked in git)
 uploads/
 public/uploads/
+/db
+/docs
+*.yml
+*.example

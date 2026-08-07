@@ -4,8 +4,46 @@ import path from "path";
 import { pool } from "../mysql.js";
 import { logAudit } from "../lib/audit.js";
 import { getIO, EVENTS } from "../lib/realtime.js";
+import { requireAdmin } from "../middleware/auth.js";
 
 const router = express.Router();
+
+const UPLOADS_ROOT = path.join(process.cwd(), "public", "uploads");
+
+/**
+ * Deletes a `/uploads/...`-relative file, resolving the path and verifying it
+ * stays inside UPLOADS_ROOT before unlinking. `relativeOldPath.split("/")`
+ * alone does not strip ".." segments (they're truthy, so `.filter(Boolean)`
+ * lets them through) — without this check, a banner whose `image_url` was set
+ * to `/uploads/../../../whatever` would let delete/update unlink an arbitrary
+ * file on disk.
+ */
+async function safeDeleteUpload(imageUrl: string, logPrefix: string) {
+  if (!imageUrl || !imageUrl.startsWith("/uploads/")) return;
+  const relativeOldPath = imageUrl.substring("/uploads/".length);
+  const filePath = path.resolve(
+    UPLOADS_ROOT,
+    ...relativeOldPath.split("/").filter(Boolean),
+  );
+  if (
+    filePath !== UPLOADS_ROOT &&
+    !filePath.startsWith(UPLOADS_ROOT + path.sep)
+  ) {
+    console.warn(`${logPrefix} refused to delete outside uploads dir:`, {
+      imageUrl,
+      filePath,
+    });
+    return;
+  }
+  try {
+    if (fs.existsSync(filePath)) {
+      await fs.promises.unlink(filePath);
+      console.log(`${logPrefix} deleted ${filePath}`);
+    }
+  } catch (err: any) {
+    console.warn(`${logPrefix} failed to delete ${imageUrl}:`, err.message);
+  }
+}
 
 // Get all banners
 router.get("/", async (req, res) => {
@@ -44,7 +82,7 @@ router.get("/", async (req, res) => {
 });
 
 // Toggle active status — MUST be before /:id to avoid conflict
-router.patch("/:id/toggle", async (req, res) => {
+router.patch("/:id/toggle", requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
     await pool.query(
@@ -73,7 +111,7 @@ router.patch("/:id/toggle", async (req, res) => {
 });
 
 // Create banner
-router.post("/", async (req, res) => {
+router.post("/", requireAdmin, async (req, res) => {
   try {
     const {
       title,
@@ -132,10 +170,10 @@ router.post("/", async (req, res) => {
 // Update banner
 router
   .route("/:id")
-  .patch(async (req, res) => {
+  .patch(requireAdmin, async (req, res) => {
     updateHandler(req, res);
   })
-  .put(async (req, res) => {
+  .put(requireAdmin, async (req, res) => {
     updateHandler(req, res);
   });
 
@@ -190,30 +228,8 @@ async function updateHandler(req: any, res: any) {
       );
       if (rows.length > 0) {
         const oldImageUrl = rows[0].image_url;
-        if (
-          oldImageUrl &&
-          oldImageUrl !== filteredUpdates.image_url &&
-          oldImageUrl.startsWith("/uploads/")
-        ) {
-          try {
-            const relativeOldPath = oldImageUrl.substring("/uploads/".length);
-            const filePath = path.join(
-              process.cwd(),
-              "public",
-              "uploads",
-              ...relativeOldPath.split("/").filter(Boolean),
-            );
-            console.log(`[banner update] Deleting old file: ${filePath}`);
-            if (fs.existsSync(filePath)) {
-              await fs.promises.unlink(filePath);
-              console.log(`[banner update] Deleted old file successfully.`);
-            }
-          } catch (err: any) {
-            console.warn(
-              `[banner update] Failed to delete old file: ${oldImageUrl}`,
-              err.message,
-            );
-          }
+        if (oldImageUrl && oldImageUrl !== filteredUpdates.image_url) {
+          await safeDeleteUpload(oldImageUrl, "[banner update]");
         }
       }
     }
@@ -245,7 +261,7 @@ async function updateHandler(req: any, res: any) {
 }
 
 // Delete banner
-router.delete("/:id", async (req, res) => {
+router.delete("/:id", requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -255,28 +271,7 @@ router.delete("/:id", async (req, res) => {
       [id],
     );
     if (rows.length > 0) {
-      const imageUrl = rows[0].image_url;
-      if (imageUrl && imageUrl.startsWith("/uploads/")) {
-        try {
-          const relativeOldPath = imageUrl.substring("/uploads/".length);
-          const filePath = path.join(
-            process.cwd(),
-            "public",
-            "uploads",
-            ...relativeOldPath.split("/").filter(Boolean),
-          );
-          console.log(`[banner delete] Deleting physical file: ${filePath}`);
-          if (fs.existsSync(filePath)) {
-            await fs.promises.unlink(filePath);
-            console.log(`[banner delete] Deleted physical file successfully.`);
-          }
-        } catch (err: any) {
-          console.warn(
-            `[banner delete] Failed to delete physical file: ${imageUrl}`,
-            err.message,
-          );
-        }
-      }
+      await safeDeleteUpload(rows[0].image_url, "[banner delete]");
     }
 
     // 2. Delete from database

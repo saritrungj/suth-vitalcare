@@ -378,6 +378,22 @@ const messages = {
     next_step: "ขั้นตอนต่อไป",
     prev_step: "ย้อนกลับ",
     finish: "เสร็จสิ้น",
+
+    // ── PWA Install Banner ────────────────────────────────────────────────────
+    install_app_title: "ติดตั้ง VitalCare ลงในเครื่อง",
+    install_app_text:
+      "เพิ่มไอคอนไว้ที่หน้าจอโฮม เข้าใช้งานได้เร็วขึ้นเหมือนแอปจริง",
+    install_app_cta: "ติดตั้ง",
+    install_app_ios_text: "เพิ่มไปยังหน้าจอโฮมได้ง่าย ๆ:",
+    install_app_ios_step1: "1. แตะปุ่มแชร์ในแถบเบราว์เซอร์",
+    install_app_ios_step2: '2. เลือก "เพิ่มไปยังหน้าจอโฮม"',
+
+    // ── Team Members Modal ────────────────────────────────────────────────────
+    team_members_unit: "คน",
+    team_total_score: "คะแนนรวมของทีม",
+    team_total_hint: "= ผลรวมคะแนนของสมาชิกทุกคนในทีม",
+    team_no_members: "ยังไม่มีสมาชิกที่เข้าร่วมกิจกรรมนี้",
+    team_view_members: "ดูสมาชิก",
   },
 
   en: {
@@ -756,6 +772,22 @@ const messages = {
     next_step: "Next",
     prev_step: "Back",
     finish: "Finish",
+
+    // ── PWA Install Banner ────────────────────────────────────────────────────
+    install_app_title: "Install VitalCare",
+    install_app_text:
+      "Add it to your home screen for quicker access, like a real app.",
+    install_app_cta: "Install",
+    install_app_ios_text: "Add it to your home screen in a couple of taps:",
+    install_app_ios_step1: "1. Tap the Share button in your browser bar",
+    install_app_ios_step2: '2. Choose "Add to Home Screen"',
+
+    // ── Team Members Modal ────────────────────────────────────────────────────
+    team_members_unit: "members",
+    team_total_score: "Team total score",
+    team_total_hint: "= the sum of every team member's score",
+    team_no_members: "No members have joined this activity yet",
+    team_view_members: "View members",
   },
 } as const;
 

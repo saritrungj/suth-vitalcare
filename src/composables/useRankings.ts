@@ -195,6 +195,27 @@ export function useRankings() {
     );
   const getTarget = (item: any) => Number(item.target) || 0;
   const isReached = (item: any) => item.reached === true;
+  // Canonical activity score (base + streak bonus + admin adjustment).
+  // Present on both individual and team leaderboard rows from computeLeaderboard.
+  const getScore = (item: any) => Number(item.total_points) || 0;
+  const getScoreParts = (item: any) => ({
+    base: Number(item.base_points) || 0,
+    streakBonus: Number(item.streak_bonus) || 0,
+    adjustment: Number(item.adjustment) || 0,
+  });
+  const getPercent = (item: any) => {
+    const target = getTarget(item);
+    if (target <= 0) return 0;
+    return Math.min(100, (getDistance(item) / target) * 100);
+  };
+  // ── Team helpers ───────────────────────────────────────────────────────────
+  const getTeamMembers = (item: any): any[] =>
+    Array.isArray(item?.members) ? item.members : [];
+  const getTeamMemberCount = (item: any) =>
+    Number(item?.member_count) || getTeamMembers(item).length;
+  const getMemberImage = (m: any) => safeImageUrl(m?.picture_url);
+  const getMemberInitial = (m: any) =>
+    (m?.name?.[0] ?? "?").toString().toUpperCase();
   const isCurrentUser = (item: any) => {
     if (!authStore.user) return false;
     return activeTab.value === "individual"
@@ -436,17 +457,28 @@ export function useRankings() {
   const openTeamModal = async (team: any) => {
     selectedTeam.value = team;
     showTeamModal.value = true;
+    // The leaderboard row already carries each member and their canonical
+    // activity score (the same numbers that summed to the team total), so the
+    // modal opens instantly and can never disagree with the row.
+    if (Array.isArray(team?.members)) {
+      teamMembers.value = team.members;
+      loadingMembers.value = false;
+      return;
+    }
+    // Fallback for the non-activity-scoped ranking, which has no member payload.
     loadingMembers.value = true;
     teamMembers.value = [];
     try {
       const members = await abortableJson<any[]>(`/api/teams/${team.id}/users`);
       teamMembers.value = members || [];
     } catch (e) {
-      uiStore.toast(
-        "error",
-        "โหลดสมาชิกทีมไม่สำเร็จ",
-        "ไม่สามารถดึงรายชื่อสมาชิกได้ในขณะนี้",
-      );
+      if (!isAbortError(e)) {
+        uiStore.toast(
+          "error",
+          "โหลดสมาชิกทีมไม่สำเร็จ",
+          "ไม่สามารถดึงรายชื่อสมาชิกได้ในขณะนี้",
+        );
+      }
     } finally {
       loadingMembers.value = false;
     }
@@ -598,6 +630,13 @@ export function useRankings() {
     hasJoinedActivities,
     getTarget,
     isReached,
+    getScore,
+    getScoreParts,
+    getPercent,
+    getTeamMembers,
+    getTeamMemberCount,
+    getMemberImage,
+    getMemberInitial,
     changePage,
     switchTab,
     loadMoreActivities,

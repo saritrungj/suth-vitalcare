@@ -219,6 +219,10 @@ const form = ref({
   isPrivate: false,
   code: "",
 });
+const maxMembersPresets = [2, 3, 4, 5, 6];
+const isCustomMaxMembers = computed(
+  () => !maxMembersPresets.includes(form.value.maxMembers),
+);
 // --- Sync Modal with URL ---
 watch(
   () => [route.query.sub, route.query.id, teams.value],
@@ -460,6 +464,14 @@ const handleSubmit = async () => {
     (!form.value.code || form.value.code.length < 4)
   ) {
     Swal.fire("ข้อผิดพลาด", "กรุณาระบุ PIN สำหรับทีมส่วนตัว", "error");
+    return;
+  }
+  if (!Number.isInteger(form.value.maxMembers) || form.value.maxMembers < 2) {
+    Swal.fire(
+      "ข้อผิดพลาด",
+      "จำนวนสมาชิกสูงสุดต้องเป็นจำนวนเต็มตั้งแต่ 2 คนขึ้นไป",
+      "error",
+    );
     return;
   }
   // If public, clear code to match user-side logic
@@ -985,18 +997,47 @@ onUnmounted(() => window.removeEventListener("click", () => {}));
               >
               <div class="grid grid-cols-5 gap-3">
                 <button
-                  v-for="n in [2, 3, 4, 5, 6]"
+                  v-for="n in maxMembersPresets"
                   :key="n"
                   @click="form.maxMembers = n"
                   class="h-14 rounded-2xl font-black text-lg transition-all border-2 flex items-center justify-center shadow-sm"
                   :class="
-                    form.maxMembers === n
+                    !isCustomMaxMembers && form.maxMembers === n
                       ? 'bg-orange-500 border-orange-500 text-white'
                       : 'bg-white border-slate-100 text-slate-400 hover:border-slate-200'
                   "
                 >
                   {{ n }}
                 </button>
+              </div>
+              <div
+                class="flex items-center gap-2.5 mt-2.5 px-1.5 py-1.5 rounded-2xl border-2 transition-all"
+                :class="
+                  isCustomMaxMembers
+                    ? 'border-orange-500 bg-orange-50'
+                    : 'border-dashed border-slate-200 bg-slate-50'
+                "
+              >
+                <span
+                  class="flex items-center gap-1 flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-black border whitespace-nowrap"
+                  :class="
+                    isCustomMaxMembers
+                      ? 'text-orange-500 border-orange-500 bg-white'
+                      : 'text-slate-400 border-slate-200 bg-white'
+                  "
+                >
+                  <Pencil :size="12" />
+                  กำหนดเอง
+                </span>
+                <input
+                  v-model.number="form.maxMembers"
+                  type="number"
+                  min="2"
+                  max="999"
+                  step="1"
+                  placeholder="พิมพ์จำนวนคน..."
+                  class="flex-1 min-w-0 bg-transparent outline-none font-black text-center text-slate-700 placeholder:font-medium placeholder:text-slate-400"
+                />
               </div>
             </div>
             <div class="space-y-2">
