@@ -3,6 +3,7 @@ import { authStore } from "../store/auth";
 import { swal, showSuccess, showError } from "../lib/swal";
 import type { SmartTableColumn } from "../components/common/SmartTable.vue";
 import { useRealtime } from "./useRealtime";
+import { exportWorkbook, type XlsxSheet } from "../lib/exportXlsx";
 
 export function useAdminActivityDashboard(
   activityId: number,
@@ -476,10 +477,10 @@ export function useAdminActivityDashboard(
     try {
       const [indRes, teamRes] = await Promise.all([
         fetch(
-          `/api/stats/rankings/individual?page=1&limit=100&activity_id=${activityId}`,
+          `/api/stats/rankings/individual?page=1&limit=10000&activity_id=${activityId}`,
         ),
         fetch(
-          `/api/stats/rankings/team?page=1&limit=100&activity_id=${activityId}`,
+          `/api/stats/rankings/team?page=1&limit=10000&activity_id=${activityId}`,
         ),
       ]);
       if (indRes.ok) rankingsIndividual.value = await indRes.json();
@@ -970,6 +971,44 @@ export function useAdminActivityDashboard(
       showError("เกิดข้อผิดพลาด ไม่สามารถนำผู้ใช้ออกได้");
     } finally {
       loading.value = false;
+    }
+  };
+
+  const addParticipantPoints = async (
+    userId: number,
+    points: number,
+    target: "shop" | "ranking",
+    reason = "",
+  ) => {
+    if (!Number.isSafeInteger(points) || points <= 0) {
+      showError("กรุณาระบุคะแนนเป็นจำนวนเต็มมากกว่า 0");
+      return false;
+    }
+    updatingId.value = userId;
+    try {
+      const res = await fetch(`/api/activities/${activityId}/bonus-points`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-user-id": String(authStore.user?.id),
+        },
+        body: JSON.stringify({ user_id: userId, points, target, reason }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "เพิ่มคะแนนไม่สำเร็จ");
+
+      showSuccess(
+        target === "shop"
+          ? "เพิ่มคะแนนร้านสำเร็จ"
+          : "เพิ่มคะแนนอันดับสำเร็จ",
+      );
+      await Promise.all([fetchStats(true), fetchRankings()]);
+      return true;
+    } catch (error: any) {
+      showError(error.message || "ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้");
+      return false;
+    } finally {
+      updatingId.value = null;
     }
   };
 
@@ -1529,8 +1568,7 @@ export function useAdminActivityDashboard(
   ) => {
     exportingTracking.value = true;
     try {
-      const XLSX = await import("xlsx");
-      const wb = XLSX.utils.book_new();
+      const sheets: XlsxSheet[] = [];
       const thaiMonths = [
         "มกราคม",
         "กุมภาพันธ์",
@@ -1656,46 +1694,29 @@ export function useAdminActivityDashboard(
           ...dataRows,
         ];
 
-        const ws = XLSX.utils.aoa_to_sheet(wsData);
-
-        // Column widths
-        const colWidths = [
-          { wch: 8 }, // ลำดับ
-          { wch: 14 }, // รหัส
-          { wch: 28 }, // ชื่อ
-          { wch: 18 }, // ทีม
-          ...cols.map(() => ({ wch: 12 })),
-        ];
-        ws["!cols"] = colWidths;
-
-        // Merge title cell across all columns
+        const colWidths = [8, 14, 28, 18, ...cols.map(() => 12)];
         const totalCols = fixedHeaders.length + cols.length;
-        ws["!merges"] = [
-          { s: { r: 0, c: 0 }, e: { r: 0, c: totalCols - 1 } },
-          { s: { r: 1, c: 0 }, e: { r: 1, c: totalCols - 1 } },
-          // Merge date headers across their tasks
+        const merges: Array<[number, number, number, number]> = [
+          [1, 1, 1, totalCols],
+          [2, 1, 2, totalCols],
           ...(() => {
-            const merges: any[] = [];
+            const dateMerges: Array<[number, number, number, number]> = [];
             let colIdx = fixedHeaders.length;
             sortedDates.forEach((dStr) => {
               const span = dateGroups[dStr].length;
               if (span > 1) {
-                merges.push({
-                  s: { r: 2, c: colIdx },
-                  e: { r: 2, c: colIdx + span - 1 },
-                });
+                dateMerges.push([3, colIdx + 1, 3, colIdx + span]);
               }
               colIdx += span;
             });
-            return merges;
+            return dateMerges;
           })(),
         ];
-
-        XLSX.utils.book_append_sheet(wb, ws, sheetName);
+        sheets.push({ name: sheetName, rows: wsData, widths: colWidths, merges });
       }
 
       const fileName = `tracking_${title}_${today}.xlsx`;
-      XLSX.writeFile(wb, fileName);
+      await exportWorkbook(fileName, sheets);
       showSuccess(`Export สำเร็จ ${monthsToExport.length} เดือน`);
     } catch {
       showError("Export ไม่สำเร็จ");
@@ -1986,6 +2007,7 @@ export function useAdminActivityDashboard(
     bulkDeleteSubmissions,
     assignTeam,
     removeParticipants,
+    addParticipantPoints,
     toggleTaskFilter,
     totalParticipants,
     totalSubmissions,

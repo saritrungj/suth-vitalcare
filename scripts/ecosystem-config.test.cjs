@@ -14,7 +14,6 @@ assert.equal(
 );
 assert.equal(app.error_file, path.join(projectRoot, "logs", "err.log"));
 assert.equal(app.out_file, path.join(projectRoot, "logs", "out.log"));
-assert.ok(
-  fs.existsSync(path.join(projectRoot, "logs")),
-  "log directory must exist",
-);
+assert.equal(app.env_production.NODE_ENV, "production");
+assert.equal(app.env_production.PORT, 5001);
+assert.ok(fs.existsSync(path.join(projectRoot, "logs")), "log directory must exist");

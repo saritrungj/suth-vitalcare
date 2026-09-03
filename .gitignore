@@ -2,18 +2,33 @@ node_modules/
 build/
 dist/
 coverage/
+.deploy/
 .DS_Store
 *.log
 !.env.example
 
-# Local env overrides (contain machine-specific / dev secrets)
+# Environment files with machine credentials. Commit templates only.
+.env
 .env.local
 .env.*.local
+.env.production
+.env.build.production
+!.env.example
+!.env.local.example
+!.env.production.example
+!.env.build.production.example
 
 # User-generated uploads (runtime files, not tracked in git)
 uploads/
 public/uploads/
 /db
-/docs
 *.yml
+*.md
 *.example
+*.old
+.env
+.env
+*.sql
+*.sql
+*.sql
+*.yaml

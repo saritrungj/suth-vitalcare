@@ -3,12 +3,13 @@ import { pool } from "../mysql.js";
 import { decrypt } from "../lib/crypto.js";
 import { logAudit } from "../lib/audit.js";
 import { getIO, EVENTS } from "../lib/realtime.js";
+import crypto from "node:crypto";
 
 const router = express.Router();
 
 // Generate a random 6-character room code
 const generateRoomCode = () =>
-  Math.random().toString(36).substring(2, 8).toUpperCase();
+  crypto.randomBytes(6).toString("base64url").slice(0, 8).toUpperCase();
 
 /**
  * Join/join-by-code/leave accept a `userId` in the body because admins move

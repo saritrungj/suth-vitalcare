@@ -1430,7 +1430,11 @@ export function useEventDetail() {
         : `https://www.facebook.com/dialog/send?link=${encodeURIComponent(url)}&app_id=626892557343231&redirect_uri=${encodeURIComponent(url)}`,
     };
     if (urls[platform])
-      window.open(urls[platform], "_blank", "width=600,height=450");
+      window.open(
+        urls[platform],
+        "_blank",
+        "noopener,noreferrer,width=600,height=450",
+      );
   };
   // Navigation & UI Helpers
   const handleBack = () => {

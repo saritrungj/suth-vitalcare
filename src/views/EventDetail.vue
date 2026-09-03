@@ -21,7 +21,7 @@
       <div
         class="hero-blur-image"
         :style="{
-          backgroundImage: `url(${event.poster || event.image || 'https://placehold.co/1200x600'})`,
+          backgroundImage: `url(${safeImageUrl(event.poster || event.image) || 'https://placehold.co/1200x600'})`,
         }"
       ></div>
       <div class="hero-blur-overlay"></div>
@@ -1681,6 +1681,7 @@ import {
   Lightbulb as LightbulbIcon,
 } from "lucide-vue-next";
 import { useEventDetail } from "../composables/useEventDetail";
+import { safeImageUrl } from "../lib/safeUrl";
 const router = useRouter();
 // The participant leaderboard moved to /rankings (see Rankings.vue).
 // Kept here — not deleted — so it can be restored by flipping this to true.

@@ -180,6 +180,7 @@ CREATE TABLE `bonus_points`  (
   `points` int NOT NULL,
   `reason` varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL,
   `given_by` int NOT NULL,
+  `affects_shop` tinyint(1) NOT NULL DEFAULT 1,
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`) USING BTREE,
   INDEX `idx_event_user`(`event_id` ASC, `user_id` ASC) USING BTREE,

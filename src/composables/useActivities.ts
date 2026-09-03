@@ -5,6 +5,7 @@ import { uiStore } from "../store/ui";
 import { langStore } from "../store/lang";
 import { useSWR } from "../composables/useSWR";
 import { useFavorites } from "../composables/useFavorites";
+import { openSafeExternalUrl } from "../lib/safeUrl";
 export function useActivities() {
   const router = useRouter();
   const route = useRoute();
@@ -845,7 +846,7 @@ export function useActivities() {
     if (b.link_type === "activity" && b.link_activity_id) {
       router.push(`/activities/${b.link_activity_id}`);
     } else if (b.link_type === "url" && b.link_url) {
-      window.open(b.link_url, "_blank");
+      openSafeExternalUrl(b.link_url);
     }
   };
   let fetchTimeout: any = null;

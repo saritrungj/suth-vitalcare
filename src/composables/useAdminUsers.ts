@@ -6,6 +6,7 @@ import { useSWR } from "./useSWR";
 import { useRoute, useRouter } from "vue-router";
 import { showSuccess, showError, showConfirm } from "../lib/swal";
 import type { SmartTableColumn } from "../components/common/SmartTable.vue";
+import Swal from "sweetalert2";
 
 export function useAdminUsers() {
   const route = useRoute();
@@ -418,6 +419,109 @@ export function useAdminUsers() {
       showSuccess("บันทึกข้อมูลสำเร็จ");
     } catch (e: any) {
       showError(e.message);
+    } finally {
+      submitting.value = false;
+    }
+  };
+
+  const resetPassword = async () => {
+    if (!target.value) return;
+
+    const idCode = String(editForm.value.id_code || "").trim();
+    const result = await Swal.fire({
+      title: "เปลี่ยนรหัสผ่าน",
+      html: `
+        <div style="text-align:left;font-family:Sarabun,sans-serif">
+          <label style="display:flex;gap:10px;align-items:flex-start;padding:12px;border:1px solid #fed7aa;border-radius:12px;margin-bottom:10px;cursor:pointer">
+            <input type="radio" name="password-mode" value="default" checked style="margin-top:4px">
+            <span><strong>ใช้รหัสผ่านเริ่มต้น</strong><br><small style="color:#64748b">${idCode ? `${idCode}@Suth` : "ต้องระบุรหัสประจำตัวก่อน"}</small></span>
+          </label>
+          <label style="display:flex;gap:10px;align-items:flex-start;padding:12px;border:1px solid #e2e8f0;border-radius:12px;cursor:pointer">
+            <input type="radio" name="password-mode" value="custom" style="margin-top:4px">
+            <span style="width:100%"><strong>กำหนดรหัสผ่านเอง</strong></span>
+          </label>
+          <div id="custom-password-fields" style="display:none;margin-top:14px">
+            <input id="custom-password" type="password" class="swal2-input" placeholder="รหัสผ่านใหม่ 8-20 ตัวอักษร" style="width:100%;margin:0 0 10px">
+            <input id="confirm-password" type="password" class="swal2-input" placeholder="ยืนยันรหัสผ่านใหม่" style="width:100%;margin:0">
+          </div>
+        </div>`,
+      showCancelButton: true,
+      confirmButtonText: "ยืนยันเปลี่ยนรหัสผ่าน",
+      cancelButtonText: "ยกเลิก",
+      confirmButtonColor: "#f97316",
+      didOpen: () => {
+        const fields = document.getElementById("custom-password-fields");
+        document.querySelectorAll<HTMLInputElement>('input[name="password-mode"]').forEach((radio) => {
+          radio.addEventListener("change", () => {
+            if (fields) fields.style.display = radio.value === "custom" && radio.checked ? "block" : "none";
+          });
+        });
+      },
+      preConfirm: () => {
+        const mode = document.querySelector<HTMLInputElement>('input[name="password-mode"]:checked')?.value;
+        if (mode === "default") {
+          if (!idCode) {
+            Swal.showValidationMessage("กรุณาระบุรหัสประจำตัวก่อนใช้รหัสผ่านเริ่มต้น");
+            return false;
+          }
+          return { mode: "default", password: "" };
+        }
+        const password = (document.getElementById("custom-password") as HTMLInputElement)?.value || "";
+        const confirmation = (document.getElementById("confirm-password") as HTMLInputElement)?.value || "";
+        if (password.length < 8 || password.length > 20) {
+          Swal.showValidationMessage("รหัสผ่านต้องมีความยาว 8-20 ตัวอักษร");
+          return false;
+        }
+        if (password !== confirmation) {
+          Swal.showValidationMessage("รหัสผ่านและการยืนยันรหัสผ่านไม่ตรงกัน");
+          return false;
+        }
+        return { mode: "custom", password };
+      },
+    });
+    if (!result.isConfirmed || !result.value) return;
+
+    submitting.value = true;
+    try {
+      // Save the current ID code first so the server always uses the value shown
+      // in the edit form as the source of the new password.
+      if (result.value.mode === "default") {
+        const saveIdCode = await fetch(`/api/users/${target.value.id}`, {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            "x-user-id": String(authStore.user?.id || ""),
+          },
+          body: JSON.stringify({ id_code: idCode }),
+        });
+        if (!saveIdCode.ok) {
+          const error = await saveIdCode.json().catch(() => ({}));
+          throw new Error(error.error || "ไม่สามารถบันทึกรหัสประจำตัวได้");
+        }
+      }
+
+      const response = await fetch(`/api/users/${target.value.id}/reset-password`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-user-id": String(authStore.user?.id || ""),
+        },
+        body: JSON.stringify(result.value),
+      });
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.error || "ไม่สามารถเปลี่ยนรหัสผ่านได้");
+      }
+
+      if (result.value.mode === "default") target.value.id_code = idCode;
+      await mutate();
+      showSuccess(
+        result.value.mode === "default"
+          ? `เปลี่ยนรหัสผ่านเป็น ${idCode}@Suth สำเร็จ`
+          : "เปลี่ยนรหัสผ่านที่กำหนดเองสำเร็จ",
+      );
+    } catch (error: any) {
+      showError(error.message);
     } finally {
       submitting.value = false;
     }
@@ -887,6 +991,7 @@ export function useAdminUsers() {
     openModal,
     closeModal,
     saveEdit,
+    resetPassword,
     confirmBan,
     unban,
     kick,

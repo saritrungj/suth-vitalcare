@@ -1924,7 +1924,8 @@ router.get("/:id/admin-stats", requireAdminOrHost, async (req, res) => {
 
     const [registrants]: any = await pool.query(
       `
-      SELECT r.id as reg_id, r.created_at, u.id as user_id, u.fname_th, u.lname_th, u.role, u.role_type, u.role_detail_1, u.role_detail_2, u.team_id, u.birth_date, u.gender, u.picture_url, u.email, u.phone, u.id_code
+      SELECT r.id as reg_id, r.created_at, u.id as user_id, u.fname_th, u.lname_th, u.role, u.role_type, u.role_detail_1, u.role_detail_2, u.team_id, u.birth_date, u.gender, u.picture_url, u.email, u.phone, u.id_code,
+             COALESCE(u.points, 0) AS shop_points
       FROM registrations r
       JOIN users u ON r.user_id = u.id
       WHERE r.event_id = ?
@@ -2323,11 +2324,19 @@ setTimeout(() => {
           points INT NOT NULL,
           reason VARCHAR(500) DEFAULT NULL,
           given_by INT NOT NULL,
+          affects_shop TINYINT(1) NOT NULL DEFAULT 1,
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
           INDEX idx_event_user (event_id, user_id),
           INDEX idx_event (event_id)
         )
       `);
+      try {
+        await pool.query(
+          "ALTER TABLE bonus_points ADD COLUMN affects_shop TINYINT(1) NOT NULL DEFAULT 1 AFTER given_by",
+        );
+      } catch (alterError: any) {
+        if (alterError.code !== "ER_DUP_FIELDNAME") throw alterError;
+      }
       console.log("[bonus_points] table ensured.");
     } catch (e: any) {
       console.error("[bonus_points] table ensure error:", e.message);
@@ -2341,7 +2350,7 @@ router.get("/:id/bonus-points", requireAdminOrHost, async (req, res) => {
   try {
     const [rows]: any = await pool.query(
       `
-      SELECT bp.id, bp.event_id, bp.user_id, bp.points, bp.reason, bp.given_by, bp.created_at,
+      SELECT bp.id, bp.event_id, bp.user_id, bp.points, bp.reason, bp.given_by, bp.affects_shop, bp.created_at,
              u.fname_th, u.lname_th, u.nickname, u.picture_url,
              g.fname_th as given_by_name
       FROM bonus_points bp
@@ -2393,13 +2402,30 @@ router.get("/:id/bonus-points", requireAdminOrHost, async (req, res) => {
 router.post("/:id/bonus-points", requireAdminOrHost, async (req, res) => {
   const { id } = req.params;
   const adminId = req.headers["x-user-id"];
-  const { user_id, points, reason } = req.body;
+  const { user_id, points, reason, target = "both" } = req.body;
   if (!user_id || points === undefined || points === null)
     return res.status(400).json({ error: "Missing user_id or points" });
   const pts = Number(points);
-  if (isNaN(pts) || pts === 0)
-    return res.status(400).json({ error: "???????????????????????????? 0" });
+  if (!Number.isSafeInteger(pts) || pts === 0 || Math.abs(pts) > 2147483647)
+    return res.status(400).json({ error: "คะแนนต้องเป็นจำนวนเต็มและห้ามเป็น 0" });
+  if (!["ranking", "shop", "both"].includes(target))
+    return res.status(400).json({ error: "ประเภทคะแนนไม่ถูกต้อง" });
+  if (reason != null && typeof reason !== "string")
+    return res.status(400).json({ error: "เหตุผลต้องเป็นข้อความ" });
+  if (typeof reason === "string" && reason.length > 500)
+    return res.status(400).json({ error: "เหตุผลต้องไม่เกิน 500 ตัวอักษร" });
   try {
+    if (target === "shop") {
+      const [requesterRows]: any = await pool.query(
+        "SELECT role FROM users WHERE id = ? LIMIT 1",
+        [adminId],
+      );
+      if (requesterRows[0]?.role !== "admin") {
+        return res
+          .status(403)
+          .json({ error: "เฉพาะแอดมินเท่านั้นที่เพิ่มคะแนนร้านได้" });
+      }
+    }
     const [regRows]: any = await pool.query(
       "SELECT id FROM registrations WHERE user_id = ? AND event_id = ? LIMIT 1",
       [user_id, id],
@@ -2408,29 +2434,31 @@ router.post("/:id/bonus-points", requireAdminOrHost, async (req, res) => {
       return res
         .status(404)
         .json({ error: "????????????????????????????????????" });
-    const [result]: any = await pool.query(
-      "INSERT INTO bonus_points (event_id, user_id, points, reason, given_by) VALUES (?, ?, ?, ?, ?)",
-      [id, user_id, pts, reason || null, adminId],
-    );
-    if (pts > 0) {
-      await pool.query(
-        "UPDATE users SET points = points + ?, total_score = total_score + ? WHERE id = ?",
-        [pts, pts, user_id],
+    let insertId: number | null = null;
+    if (target === "ranking" || target === "both") {
+      const [result]: any = await pool.query(
+        "INSERT INTO bonus_points (event_id, user_id, points, reason, given_by, affects_shop) VALUES (?, ?, ?, ?, ?, ?)",
+        [id, user_id, pts, reason || null, adminId, target === "both" ? 1 : 0],
       );
-    } else {
+      insertId = result.insertId;
+    }
+    if (target === "shop" || target === "both") {
       await pool.query(
         "UPDATE users SET points = GREATEST(0, points + ?), total_score = GREATEST(0, total_score + ?) WHERE id = ?",
-        [pts, pts, user_id],
+        [pts, target === "both" ? pts : 0, user_id],
       );
     }
     await logAudit({
       userId: Number(adminId),
-      action: "ADD_BONUS_POINTS",
-      description: `Admin added ${pts} bonus pts to user ${user_id} in event ${id}. Reason: ${reason || "-"}`,
+      action:
+        target === "shop" ? "ADJUST_SHOP_POINTS" : "ADD_BONUS_POINTS",
+      description: `Admin added ${pts} ${target} pts to user ${user_id} in event ${id}. Reason: ${reason || "-"}`,
       targetType: "activity",
       targetId: Number(id),
+      metadata: { user_id: Number(user_id), points: pts, target },
+      req,
     });
-    res.status(201).json({ id: result.insertId, message: "????????????????" });
+    res.status(201).json({ id: insertId, target, message: "เพิ่มคะแนนสำเร็จ" });
   } catch (error: any) {
     res.status(500).json({ error: "Internal Server Error" });
   }
@@ -2445,17 +2473,19 @@ router.delete(
     const adminId = req.headers["x-user-id"];
     try {
       const [rows]: any = await pool.query(
-        "SELECT id, user_id, points FROM bonus_points WHERE id = ? AND event_id = ? LIMIT 1",
+        "SELECT id, user_id, points, affects_shop FROM bonus_points WHERE id = ? AND event_id = ? LIMIT 1",
         [bonusId, id],
       );
       if (rows.length === 0)
         return res.status(404).json({ error: "????????????????" });
       const { user_id, points } = rows[0];
       await pool.query("DELETE FROM bonus_points WHERE id = ?", [bonusId]);
-      await pool.query(
-        "UPDATE users SET points = GREATEST(0, points - ?), total_score = GREATEST(0, total_score - ?) WHERE id = ?",
-        [Number(points), Number(points), user_id],
-      );
+      if (rows[0].affects_shop) {
+        await pool.query(
+          "UPDATE users SET points = GREATEST(0, points - ?), total_score = GREATEST(0, total_score - ?) WHERE id = ?",
+          [Number(points), Number(points), user_id],
+        );
+      }
       await logAudit({
         userId: Number(adminId),
         action: "DELETE_BONUS_POINTS",

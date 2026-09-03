@@ -1,6 +1,5 @@
-import dotenv from "dotenv";
+import "../loadEnv.js";
 import sharp from "sharp";
-dotenv.config();
 
 /**
  * [The Flagship Brain] - Typhoon 2.5-30B

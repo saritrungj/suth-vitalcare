@@ -22,7 +22,6 @@ import {
   CalendarDays,
   Users,
   Star,
-  Flame,
   Snowflake,
   PencilLine,
   PartyPopper,
@@ -393,7 +392,7 @@ const getActivityStatus = (act: any) => {
       <div class="mission-dashboard">
         <div class="dash-card points-card animate-pulse-subtle">
           <div class="dash-icon-wrap bg-orange-100">
-            <Star :size="24" class="text-orange-500 fill-current" />
+            <img class="points-star-icon" src="/Star.svg" alt="" />
           </div>
           <div class="dash-info">
             <span
@@ -423,7 +422,12 @@ const getActivityStatus = (act: any) => {
                 : 'bg-slate-100'
             "
           >
-            <Flame v-if="activeStreak > 0" class="streak-emoji" :size="22" />
+            <img
+              v-if="activeStreak > 0"
+              class="streak-fire-icon"
+              src="/Streak%20fire.svg"
+              alt=""
+            />
             <Snowflake v-else class="streak-emoji" :size="22" />
           </div>
           <div class="dash-info">
@@ -2129,6 +2133,11 @@ const getActivityStatus = (act: any) => {
   justify-content: center;
   flex-shrink: 0;
 }
+.points-star-icon {
+  width: 46px;
+  height: 46px;
+  object-fit: contain;
+}
 .dash-info {
   display: flex;
   flex-direction: column;
@@ -2153,6 +2162,30 @@ const getActivityStatus = (act: any) => {
 }
 .streak-emoji {
   font-size: 1.6rem;
+}
+.streak-fire-icon {
+  width: clamp(52px, 6vw, 64px);
+  height: clamp(52px, 6vw, 64px);
+  object-fit: contain;
+}
+@media (max-width: 576px) {
+  .dash-card {
+    gap: 12px;
+    padding: 14px 16px;
+  }
+  .dash-icon-wrap {
+    width: 48px;
+    height: 48px;
+    border-radius: 14px;
+  }
+  .points-star-icon {
+    width: 42px;
+    height: 42px;
+  }
+  .streak-fire-icon {
+    width: 54px;
+    height: 54px;
+  }
 }
 .animate-bounce-slow {
   animation: bounce-slow 3s infinite;
@@ -2333,8 +2366,10 @@ const getActivityStatus = (act: any) => {
   margin-bottom: 24px;
   z-index: 2;
 }
-.streak-fire-icon {
-  font-size: 1.2rem;
+.celebration-streak-badge .streak-fire-icon {
+  width: 1.2rem;
+  height: 1.2rem;
+  object-fit: contain;
 }
 .celebration-btn {
   width: 100%;

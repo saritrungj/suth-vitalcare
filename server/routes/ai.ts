@@ -1,6 +1,6 @@
 import express from "express";
 import axios from "axios";
-import dotenv from "dotenv";
+import "../loadEnv.js";
 import {
   callTyphoon,
   callTyphoonVisionAction,
@@ -12,11 +12,10 @@ import fs from "fs/promises";
 import path from "path";
 import { fileURLToPath } from "url";
 import sharp from "sharp";
+import { fetchRemoteImage } from "../lib/safeUrl.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-
-dotenv.config();
 
 const router = express.Router();
 
@@ -70,11 +69,11 @@ async function getImageBuffer(imageUrl: string): Promise<any> {
         uploadsIndex + "/uploads/".length,
       );
 
-      const fullPath = path.join(
-        __dirname,
-        "../../public/uploads",
-        relativeFromUploads,
-      );
+      const uploadsRoot = path.resolve(__dirname, "../../public/uploads");
+      const fullPath = path.resolve(uploadsRoot, relativeFromUploads);
+      if (!fullPath.startsWith(uploadsRoot + path.sep)) {
+        throw new Error("INVALID_LOCAL_PATH");
+      }
       return await fs.readFile(fullPath);
     } catch (err) {
       console.warn(
@@ -89,9 +88,9 @@ async function getImageBuffer(imageUrl: string): Promise<any> {
     throw new Error(`INVALID_LOCAL_URL:${imageUrl}`);
   }
 
-  // Fallback for external URLs (LINE, Google, or old absolute ngrok links)
-  const response = await axios.get(imageUrl, { responseType: "arraybuffer" });
-  return (Buffer as any).from(response.data);
+  // External images are restricted to configured media hosts, verified after
+  // every redirect, content-typed, timed out, and size-limited.
+  return fetchRemoteImage(imageUrl);
 }
 
 // OCR for distance (Using Typhoon Vision)

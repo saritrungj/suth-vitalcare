@@ -14,6 +14,7 @@ import {
   Search,
   Filter,
 } from "lucide-vue-next";
+import { exportObjects } from "../../lib/exportXlsx";
 export interface SmartTableColumn<T = any> {
   key: string;
   label: string;
@@ -344,11 +345,7 @@ const handleExportExcel = async () => {
     });
     return mappedRow;
   });
-  const XLSX = await import("xlsx");
-  const ws = XLSX.utils.json_to_sheet(exportData);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "Data");
-  XLSX.writeFile(wb, `${props.exportFileName}.xlsx`);
+  await exportObjects(`${props.exportFileName}.xlsx`, exportData);
   showExportModal.value = false;
 };
 </script>

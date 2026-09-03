@@ -5,6 +5,7 @@ import { pool } from "../mysql.js";
 import { logAudit } from "../lib/audit.js";
 import { getIO, EVENTS } from "../lib/realtime.js";
 import { requireAdmin } from "../middleware/auth.js";
+import { safeExternalLink, safeMediaRedirect } from "../lib/safeUrl.js";
 
 const router = express.Router();
 
@@ -62,6 +63,8 @@ router.get("/", async (req, res) => {
     // Parse positions JSON and optionally filter by position
     const parsed = rows.map((r: any) => ({
       ...r,
+      image_url: safeMediaRedirect(r.image_url),
+      link_url: safeExternalLink(r.link_url),
       positions:
         typeof r.positions === "string"
           ? JSON.parse(r.positions)
@@ -127,6 +130,14 @@ router.post("/", requireAdmin, async (req, res) => {
       start_date,
       end_date,
     } = req.body;
+    const safeImageUrl = safeMediaRedirect(image_url);
+    const safeLinkUrl = link_type === "url" ? safeExternalLink(link_url) : null;
+    if (!safeImageUrl) {
+      return res.status(400).json({ error: "Banner image URL is not allowed" });
+    }
+    if (link_type === "url" && !safeLinkUrl) {
+      return res.status(400).json({ error: "External link host is not allowed" });
+    }
     const finalPositions = positions || (position ? [position] : ["hero"]);
     const query = `
       INSERT INTO banners (title, subtitle, image_url, link_url, link_type, link_activity_id, positions, sort_order, is_active, start_date, end_date)
@@ -135,8 +146,8 @@ router.post("/", requireAdmin, async (req, res) => {
     const [result]: any = await pool.query(query, [
       title,
       subtitle || null,
-      image_url,
-      link_url || null,
+      safeImageUrl,
+      safeLinkUrl,
       link_type || "none",
       link_activity_id || null,
       JSON.stringify(finalPositions),
@@ -214,6 +225,21 @@ async function updateHandler(req: any, res: any) {
           filteredUpdates[key] = updates[key];
         }
       }
+    }
+
+    if ("image_url" in filteredUpdates) {
+      const safeImageUrl = safeMediaRedirect(filteredUpdates.image_url);
+      if (!safeImageUrl) {
+        return res.status(400).json({ error: "Banner image URL is not allowed" });
+      }
+      filteredUpdates.image_url = safeImageUrl;
+    }
+    if ("link_url" in filteredUpdates) {
+      const safeLinkUrl = safeExternalLink(filteredUpdates.link_url);
+      if (filteredUpdates.link_type === "url" && !safeLinkUrl) {
+        return res.status(400).json({ error: "External link host is not allowed" });
+      }
+      filteredUpdates.link_url = safeLinkUrl;
     }
 
     const keys = Object.keys(filteredUpdates);

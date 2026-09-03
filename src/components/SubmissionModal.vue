@@ -44,11 +44,6 @@
               }}</span>
             </span>
           </div>
-          <p v-if="isPoints" class="sm-score-formula">
-            ภารกิจ {{ scoreRow.base_points ?? 0 }} + streak
-            {{ scoreRow.streak_bonus ?? 0 }} ({{ scoreRow.streak ?? 0 }} วัน) +
-            ปรับ {{ scoreRow.adjustment ?? 0 }}
-          </p>
         </div>
 
         <!-- Body -->
@@ -315,11 +310,6 @@ const formatDate = (val: any) => {
   font-size: 0.75rem;
   font-weight: 600;
   color: #c2410c;
-}
-.sm-score-formula {
-  margin: 0.25rem 0 0;
-  font-size: 0.7rem;
-  color: #b45309;
 }
 .sm-user {
   display: flex;

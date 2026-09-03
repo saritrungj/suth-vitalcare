@@ -87,8 +87,14 @@
             <div class="empty-icon">
               <Inbox :size="48" />
             </div>
-            <p>{{ langStore.t("rank_no_joined") }}</p>
-            <router-link to="/activities" class="retry-btn">
+            <p>
+              {{
+                isAdmin
+                  ? "ยังไม่มีกิจกรรมในระบบ"
+                  : langStore.t("rank_no_joined")
+              }}
+            </p>
+            <router-link v-if="!isAdmin" to="/activities" class="retry-btn">
               {{ langStore.t("rank_no_joined_cta") }}
             </router-link>
           </div>
@@ -233,20 +239,22 @@
                     <div class="name-block">
                       <div class="name-line">
                         <span class="name-text">{{ getName(item) }}</span>
-                        <!-- Streak Badge (individual tab only) -->
+                        <!-- Fire streak (individual tab only) -->
                         <span
                           v-if="activeTab === 'individual' && item.streak >= 1"
-                          class="streak-badge"
-                          :class="{
-                            'streak-hot': item.streak >= 7,
-                            'streak-warm': item.streak >= 3 && item.streak < 7,
-                            'streak-cool': item.streak < 3,
-                          }"
+                          class="streak-indicator"
                           :title="`${item.streak} วันติดต่อกัน`"
+                          :aria-label="`${item.streak} วันติดต่อกัน`"
                         >
-                          <Flame :size="13" />
-                          {{ item.streak }}</span
-                        >
+                          <img
+                            class="streak-fire-icon"
+                            src="/Streak%20fire.svg"
+                            alt=""
+                          />
+                          <span class="streak-multiplier"
+                            >x{{ item.streak }}</span
+                          >
+                        </span>
                       </div>
 
                       <!-- Team: member thumbnails + count, tap the row to see all -->
@@ -284,23 +292,11 @@
                           {{ getTeamMemberCount(item) }}
                           {{ langStore.t("team_members_unit") }}
                         </span>
-                        <span v-if="isPoints" class="score-parts">
-                          ภารกิจ {{ getScoreParts(item).base }} · streak +{{
-                            getScoreParts(item).streakBonus
-                          }}
-                          · ปรับ {{ getScoreParts(item).adjustment }}
-                        </span>
                       </div>
 
                       <span v-else-if="isCurrentUser(item)" class="me-badge">{{
                         langStore.t("my_rank")
                       }}</span>
-                      <span v-else-if="isPoints" class="score-parts">
-                        ภารกิจ {{ getScoreParts(item).base }} · streak +{{
-                          getScoreParts(item).streakBonus
-                        }}
-                        · ปรับ {{ getScoreParts(item).adjustment }}
-                      </span>
                     </div>
                   </div>
                   <div class="col-progress">
@@ -379,7 +375,6 @@ import {
   ChevronDown,
   Search,
   X,
-  Flame,
   Check,
   Inbox,
   Users,
@@ -418,10 +413,10 @@ const {
   getImage,
   isCurrentUser,
   hasJoinedActivities,
+  isAdmin,
   getTarget,
   isReached,
   getScore,
-  getScoreParts,
   getPercent,
   getTeamMembers,
   getTeamMemberCount,
@@ -482,46 +477,25 @@ const handleSelectActivity = (id) => {
 /* นำเข้าฟอนต์ Sarabun จาก Google Fonts */
 @import url("https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap");
 
-/* 🔥 Streak Badge */
-.streak-badge {
+/* Fire streak: the artwork stands on its own; no badge/container treatment. */
+.streak-indicator {
   display: inline-flex;
   align-items: center;
   gap: 2px;
-  padding: 2px 8px;
-  border-radius: 99px;
-  font-size: 0.72rem;
-  font-weight: 700;
   white-space: nowrap;
   flex-shrink: 0;
-  transition: transform 0.2s;
 }
-.streak-badge:hover {
-  transform: scale(1.08);
+.streak-fire-icon {
+  width: 36px;
+  height: 36px;
+  object-fit: contain;
 }
-.streak-hot {
-  background: linear-gradient(135deg, #ff6a00, #ee0979);
-  color: #fff;
-  box-shadow: 0 2px 8px rgba(255, 106, 0, 0.4);
-  animation: streak-pulse 1.8s infinite;
-}
-.streak-warm {
-  background: #fff0e6;
-  color: #ea580c;
-  border: 1px solid #fed7aa;
-}
-.streak-cool {
-  background: #f1f5f9;
-  color: #64748b;
-  border: 1px solid #e2e8f0;
-}
-@keyframes streak-pulse {
-  0%,
-  100% {
-    box-shadow: 0 2px 8px rgba(255, 106, 0, 0.4);
-  }
-  50% {
-    box-shadow: 0 4px 16px rgba(238, 9, 121, 0.5);
-  }
+.streak-multiplier {
+  color: #c2410c;
+  font-size: 0.85rem;
+  font-weight: 800;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
 }
 
 .rank-app {
@@ -1189,11 +1163,6 @@ const handleSelectActivity = (id) => {
   border-radius: 6px;
 }
 
-.score-parts {
-  font-size: 0.68rem;
-  color: var(--text-muted);
-}
-
 .prog-nums {
   display: flex;
   justify-content: space-between;
@@ -1407,8 +1376,7 @@ const handleSelectActivity = (id) => {
   }
 }
 
-/* Very narrow phones: drop the streak pill's label padding and let the name
-   take the full width before it ellipsises. */
+/* Very narrow phones: keep the fire count clear without crowding the name. */
 @media (max-width: 360px) {
   .list-header,
   .list-row {
@@ -1429,6 +1397,13 @@ const handleSelectActivity = (id) => {
     height: 32px;
     min-width: 32px;
     min-height: 32px;
+  }
+  .streak-fire-icon {
+    width: 32px;
+    height: 32px;
+  }
+  .streak-multiplier {
+    font-size: 0.8rem;
   }
 }
 

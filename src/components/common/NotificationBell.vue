@@ -3,6 +3,7 @@ import { ref, onMounted, onUnmounted } from "vue";
 import { useRouter } from "vue-router";
 import { Bell, CheckCheck, Inbox } from "lucide-vue-next";
 import { langStore } from "../../store/lang";
+import { safeInternalPath } from "../../lib/safeUrl";
 import {
   useNotifications,
   type AppNotification,
@@ -28,7 +29,8 @@ const close = () => (open.value = false);
 const onItem = (n: AppNotification) => {
   if (!n.is_read) markRead(n.id);
   close();
-  if (n.link_url) router.push(n.link_url);
+  const destination = safeInternalPath(n.link_url);
+  if (destination) router.push(destination);
 };
 
 const onDocPointer = (e: PointerEvent) => {

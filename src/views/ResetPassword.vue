@@ -53,15 +53,7 @@ const handleForgotPassword = async () => {
       confirmButtonColor: "#f05a23",
       timer: 3000,
     });
-    // For demo purposes, if the API returns a debug token we automatically jump to the next step
-    if (data.debug_token) {
-      token.value = data.debug_token;
-      step.value = "reset";
-    } else {
-      // Since we don't have a real OTP flow in the mock, we assume success means check email
-      // Or if testing locally, developer can just enter the new URL
-      step.value = "success";
-    }
+    step.value = "success";
   } catch (error: any) {
     Swal.fire({
       icon: "error",
@@ -85,13 +77,13 @@ const handleResetPassword = async () => {
     });
     return;
   }
-  if (newPassword.value.length < 6) {
+  if (newPassword.value.length < 8 || newPassword.value.length > 20) {
     Swal.fire({
       icon: "error",
       title:
         langStore.locale === "th"
-          ? "รหัสผ่านต้องมีความยาวอย่างน้อย 6 ตัวอักษร"
-          : "Password must be at least 6 characters long",
+          ? "รหัสผ่านต้องมีความยาว 8–20 ตัวอักษร"
+          : "Password must be 8–20 characters long",
       confirmButtonColor: "#f05a23",
     });
     return;
@@ -219,6 +211,8 @@ const handleResetPassword = async () => {
             <input
               type="password"
               v-model="newPassword"
+              minlength="8"
+              maxlength="20"
               :placeholder="langStore.t('new_password')"
               class="input-line"
             />
@@ -228,6 +222,8 @@ const handleResetPassword = async () => {
             <input
               type="password"
               v-model="confirmPassword"
+              minlength="8"
+              maxlength="20"
               :placeholder="
                 langStore.locale === 'th'
                   ? 'ยืนยันรหัสผ่านใหม่'

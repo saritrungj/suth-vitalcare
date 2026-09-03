@@ -32,6 +32,7 @@ import {
   Calendar,
   UserPlus,
   Loader2,
+  KeyRound,
 } from "lucide-vue-next";
 import { useRouter } from "vue-router";
 import { useAdminUsers } from "../../composables/useAdminUsers";
@@ -72,6 +73,7 @@ const {
   openModal,
   closeModal,
   saveEdit,
+  resetPassword,
   confirmBan,
   unban,
   kick,
@@ -316,12 +318,13 @@ const quickAddUser = async () => {
         },
       });
       let successCount = 0;
-      let createdEmails = [];
+      let createdEmails: string[] = [];
       for (let i = 0; i < numToCreate; i++) {
-        const randId = Math.floor(10000 + Math.random() * 90000); // 5 digit random
+        const randomValue = crypto.getRandomValues(new Uint32Array(1))[0];
+        const randId = 10000 + (randomValue % 90000);
         const genEmail = `VitalCare${randId}@gmail.com`;
-        const genPassword = `123456789`;
-        const res = await fetch(`${API_URL}/users/register-email`, {
+        const genPassword = `${crypto.randomUUID().replace(/-/g, "").slice(0, 16)}A1!`;
+        const res = await fetch(`${API_URL}/users`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -330,11 +333,12 @@ const quickAddUser = async () => {
             fname_th: "VitalCare",
             lname_th: `User ${randId}`,
             role: "user",
+            send_email: false,
           }),
         });
         if (res.ok) {
           successCount++;
-          createdEmails.push(genEmail);
+          createdEmails.push(`${genEmail} — ${genPassword}`);
         }
       }
       mutate(); // Reload data
@@ -342,7 +346,7 @@ const quickAddUser = async () => {
         Swal.fire({
           icon: "success",
           title: "สร้างสำเร็จ!",
-          html: `สร้างบัญชีสำเร็จ <b>${successCount}</b> บัญชี<br><br><div class="max-h-40 overflow-y-auto text-sm text-left bg-slate-50 p-3 rounded-lg border border-slate-200 tracking-tight text-slate-700">${createdEmails.join("<br>")}</div><br>รหัสผ่านทั้งหมดคือ: <b>123456789</b>`,
+          html: `สร้างบัญชีสำเร็จ <b>${successCount}</b> บัญชี<br><br><div class="max-h-40 overflow-y-auto text-sm text-left bg-slate-50 p-3 rounded-lg border border-slate-200 tracking-tight text-slate-700">${createdEmails.join("<br>")}</div>`,
           confirmButtonColor: "#f97316",
         });
       } else {
@@ -2262,6 +2266,14 @@ const handleBulkLeaveConfirm = async () => {
                 class="flex-1 sm:flex-none px-6 py-3 text-sm font-bold text-slate-600 bg-slate-100 rounded-xl hover:bg-slate-200 transition-colors"
               >
                 ยกเลิก
+              </button>
+              <button
+                @click="resetPassword"
+                :disabled="submitting"
+                class="flex-1 sm:flex-none px-6 py-3 text-sm font-bold text-orange-600 bg-orange-50 border border-orange-200 rounded-xl hover:bg-orange-100 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                <KeyRound :size="18" />
+                เปลี่ยนรหัสผ่าน
               </button>
               <button
                 @click="saveEdit"

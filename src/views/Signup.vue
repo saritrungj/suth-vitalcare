@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, watch, computed } from "vue";
+import { ref, onMounted, onBeforeUnmount, watch, computed, nextTick } from "vue";
 import { useRouter } from "vue-router";
 import { authStore } from "../store/auth";
 import { langStore } from "../store/lang";
@@ -60,6 +60,67 @@ const hasDisease = ref("no"); // Default to 'no'
 const isAnalyzing = ref(false);
 const isSubmitting = ref(false);
 const errorMsg = ref("");
+const isTurnstileEnabled = import.meta.env.VITE_TURNSTILE_ENABLED !== "false";
+const turnstileSiteKey =
+  (import.meta.env.VITE_TURNSTILE_SITE_KEY as string) ||
+  "1x00000000000000000000AA";
+const turnstileToken = ref("");
+const turnstileWidgetId = ref<string | null>(null);
+
+function renderTurnstile() {
+  if (!isTurnstileEnabled || authStore.user) return;
+  const el = document.getElementById("signup-turnstile-container");
+  if (!el || !(window as any).turnstile) return;
+  if (turnstileWidgetId.value !== null) {
+    try {
+      (window as any).turnstile.remove(turnstileWidgetId.value);
+    } catch {}
+  }
+  turnstileToken.value = "";
+  turnstileWidgetId.value = (window as any).turnstile.render(el, {
+    sitekey: turnstileSiteKey,
+    theme: "light",
+    size: "normal",
+    callback: (token: string) => (turnstileToken.value = token),
+    "expired-callback": () => (turnstileToken.value = ""),
+    "error-callback": () => (turnstileToken.value = ""),
+  });
+}
+
+function loadTurnstile() {
+  if (!isTurnstileEnabled || authStore.user) return;
+  const existing = document.getElementById("cf-turnstile-script");
+  if (!existing) {
+    const script = document.createElement("script");
+    script.id = "cf-turnstile-script";
+    script.src = "https://challenges.cloudflare.com/turnstile/v0/api.js";
+    script.async = true;
+    script.defer = true;
+    script.onload = renderTurnstile;
+    document.head.appendChild(script);
+  } else if ((window as any).turnstile) {
+    renderTurnstile();
+  }
+}
+
+function resetTurnstile() {
+  turnstileToken.value = "";
+  if (turnstileWidgetId.value !== null && (window as any).turnstile) {
+    try {
+      (window as any).turnstile.reset(turnstileWidgetId.value);
+    } catch {}
+  }
+}
+
+function requireSignupCaptcha() {
+  if (!isTurnstileEnabled || authStore.user) return true;
+  if (turnstileToken.value) return true;
+  toast.error(langStore.t("captcha_required"));
+  document
+    .getElementById("signup-turnstile-container")
+    ?.scrollIntoView({ behavior: "smooth", block: "center" });
+  return false;
+}
 const loadingMessages = computed(() =>
   langStore.locale === "th"
     ? [
@@ -369,6 +430,15 @@ const nextStep = () => {
         scrollToElement("password_input");
         return;
       }
+      if (formData.value.password.length > 20) {
+        toast.warning(
+          langStore.locale === "th"
+            ? "รหัสผ่านต้องยาวไม่เกิน 20 ตัวอักษร"
+            : "Password must be no more than 20 characters",
+        );
+        scrollToElement("password_input");
+        return;
+      }
       if (formData.value.password !== formData.value.confirmPassword) {
         toast.warning("รหัสผ่านและการยืนยันรหัสผ่านไม่ตรงกัน");
         scrollToElement("confirm_password_input");
@@ -531,6 +601,20 @@ const prevStep = () => {
   window.scrollTo({ top: 0, behavior: "smooth" });
   step.value = 1;
 };
+
+watch(step, async (value) => {
+  if (value !== 2) return;
+  await nextTick();
+  loadTurnstile();
+});
+
+onBeforeUnmount(() => {
+  if (turnstileWidgetId.value !== null && (window as any).turnstile) {
+    try {
+      (window as any).turnstile.remove(turnstileWidgetId.value);
+    } catch {}
+  }
+});
 const handleBackTop = () => {
   if (step.value === 2) {
     prevStep();
@@ -579,6 +663,8 @@ const ensureAccountCreated = async (API_URL: string) => {
     throw new Error("กรุณากรอกข้อมูลให้ครบถ้วน");
   }
 
+  if (isTurnstileEnabled) regBody.captchaToken = turnstileToken.value;
+
   const regRes = await fetch(`${API_URL}/users/register-email`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -612,6 +698,7 @@ const submitForm = async () => {
     scrollToElement("goal_select");
     return;
   }
+  if (!requireSignupCaptcha()) return;
   if (isSubmitting.value) return;
   isSubmitting.value = true;
   try {
@@ -731,12 +818,14 @@ const submitForm = async () => {
     router.push("/");
   } catch (err: any) {
     toast.error(err.message || "เกิดข้อผิดพลาดในการบันทึกข้อมูล");
+    resetTurnstile();
   } finally {
     isSubmitting.value = false;
   }
 };
 const skipStep2 = async () => {
   if (isSubmitting.value) return;
+  if (!requireSignupCaptcha()) return;
   isSubmitting.value = true;
   try {
     const API_URL = (import.meta as any).env.VITE_API_URL || "/api";
@@ -819,6 +908,7 @@ const skipStep2 = async () => {
     router.push("/");
   } catch (err: any) {
     toast.error(err.message || "เกิดข้อผิดพลาด");
+    resetTurnstile();
   } finally {
     isSubmitting.value = false;
   }
@@ -1082,6 +1172,8 @@ const handlePaste = (e: ClipboardEvent) => {
                 v-model="formData.password"
                 placeholder=" "
                 autocomplete="new-password"
+                minlength="8"
+                maxlength="20"
                 required
               />
               <label>{{
@@ -1095,6 +1187,8 @@ const handlePaste = (e: ClipboardEvent) => {
                 v-model="formData.confirmPassword"
                 placeholder=" "
                 autocomplete="new-password"
+                minlength="8"
+                maxlength="20"
                 required
               />
               <label>{{
@@ -1882,6 +1976,22 @@ const handlePaste = (e: ClipboardEvent) => {
               </div>
             </label>
           </div>
+          <div
+            v-if="isTurnstileEnabled && !authStore.user"
+            class="signup-captcha"
+          >
+            <p class="signup-captcha-label">
+              {{
+                langStore.locale === "th"
+                  ? "ยืนยันตัวตนก่อนสมัครสมาชิก"
+                  : "Complete the verification before registering"
+              }}
+            </p>
+            <div
+              id="signup-turnstile-container"
+              :data-sitekey="turnstileSiteKey"
+            ></div>
+          </div>
         </div>
         <div class="actions mt-5">
           <button
@@ -1932,6 +2042,23 @@ const handlePaste = (e: ClipboardEvent) => {
   background-color: var(--bg-color);
   font-family: "Sarabun", sans-serif;
   overflow-y: auto;
+}
+.signup-captcha {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 1.5rem;
+  padding: 1rem;
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  background: #fff;
+}
+.signup-captcha-label {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  text-align: center;
 }
 .bg-shape {
   position: fixed;

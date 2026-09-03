@@ -1,5 +1,6 @@
 import { pool } from "../mysql.js";
 import { Request } from "express";
+import { getClientIp } from "./clientIp.js";
 
 export interface LogOptions {
   userId?: number | string;
@@ -102,11 +103,7 @@ export async function logAction(req: Request | null, options: LogOptions) {
   const { userId, action, targetType, targetId, description, metadata } =
     options;
 
-  const ipAddress = req
-    ? ((req.headers["x-forwarded-for"] ||
-        req.socket.remoteAddress ||
-        null) as string)
-    : "SYSTEM";
+  const ipAddress = req ? getClientIp(req) || null : "SYSTEM";
   const userAgent = req ? req.headers["user-agent"] || null : "SYSTEM";
 
   // Mask metadata before storing

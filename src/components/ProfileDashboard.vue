@@ -85,7 +85,7 @@
             class="na-item"
             :class="{ 'na-unread': !n.is_read }"
           >
-            <router-link v-if="n.link_url" :to="n.link_url" class="na-link">
+            <router-link v-if="safeInternalPath(n.link_url)" :to="safeInternalPath(n.link_url)" class="na-link">
               <div class="na-title">{{ n.title }}</div>
               <div class="na-msg">{{ n.message }}</div>
             </router-link>
@@ -304,6 +304,7 @@ import {
 } from "chart.js";
 import { Line, Doughnut, Bar } from "vue-chartjs";
 import { useNotifications } from "../composables/useNotifications";
+import { safeInternalPath } from "../lib/safeUrl";
 
 ChartJS.register(
   CategoryScale,

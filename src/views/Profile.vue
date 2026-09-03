@@ -183,13 +183,25 @@
                 <div
                   v-if="activeTab === 'calendar' || activeTab === 'dashboard'"
                   class="streak-cool-header"
+                  :class="{ 'has-streak': currentStreak > 0 }"
+                  :title="`${currentStreak} ${langStore.t('streak_days')}`"
+                  :aria-label="`${currentStreak} ${langStore.t('streak_days')}`"
                 >
-                  <div class="streak-fire-wrap">
-                    <Flame class="fire-emoji" :size="20" />
+                  <div class="streak-fire-wrap" aria-hidden="true">
                     <div class="fire-glow"></div>
+                    <img
+                      class="fire-emoji"
+                      src="/Streak%20fire.svg"
+                      alt=""
+                    />
                   </div>
                   <div class="streak-info">
-                    <div class="streak-count">{{ currentStreak }}×</div>
+                    <div class="streak-count">
+                      <span class="streak-times">x</span>{{ currentStreak }}
+                    </div>
+                    <div class="streak-label">
+                      {{ langStore.t("streak_days") }}
+                    </div>
                   </div>
                 </div>
 
@@ -1972,7 +1984,8 @@ const completeLineLink = async () => {
   if (!currentUser?.id) return;
   isLinkingLine.value = true;
   try {
-    const profile = await liff.getProfile();
+    const accessToken = liff.getAccessToken();
+    if (!accessToken) throw new Error("LINE access token is unavailable");
     const API_URL = import.meta.env.VITE_API_URL || "/api";
     const res = await fetch(`${API_URL}/users/${currentUser.id}/link-line`, {
       method: "POST",
@@ -1981,9 +1994,7 @@ const completeLineLink = async () => {
         "x-user-id": String(currentUser.id),
       },
       body: JSON.stringify({
-        line_id: profile.userId,
-        display_name: profile.displayName,
-        picture_url: profile.pictureUrl,
+        accessToken,
       }),
     });
     if (res.ok) {
@@ -3507,33 +3518,122 @@ onUnmounted(() => {
 }
 
 .streak-cool-header {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 10px;
-  background: #fff;
-  padding: 6px 16px;
-  border-radius: 99px;
-  box-shadow: 0 4px 15px rgba(244, 63, 94, 0.1);
-  border: 1px solid #fff5f5;
+  gap: 4px;
+  min-height: 62px;
+  padding: 0 4px;
   margin-right: 12px;
 }
 
 .streak-cool-header .streak-fire-wrap {
-  width: 32px;
-  height: 32px;
+  position: relative;
+  isolation: isolate;
+  width: 62px;
+  height: 62px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 62px;
 }
 
 .streak-cool-header .fire-emoji {
-  font-size: 20px;
+  position: relative;
+  z-index: 2;
+  width: 54px;
+  height: 54px;
+  object-fit: contain;
+  filter:
+    drop-shadow(0 0 4px rgba(255, 183, 77, 0.95))
+    drop-shadow(0 0 11px rgba(255, 98, 0, 0.62))
+    drop-shadow(0 5px 8px rgba(190, 24, 40, 0.22));
+  animation: profile-fire-breathe 2.4s ease-in-out infinite;
 }
 
 .streak-cool-header .fire-glow {
-  width: 24px;
-  height: 24px;
+  position: absolute;
+  z-index: 0;
+  inset: 10px;
+  width: auto;
+  height: auto;
+  border-radius: 50%;
+  background: rgba(255, 111, 0, 0.5);
+  filter: blur(10px);
+  opacity: 0.76;
+  animation: profile-glow-pulse 2.4s ease-in-out infinite;
+}
+
+.streak-cool-header .fire-glow::before {
+  content: "";
+  position: absolute;
+  inset: -10px;
+  border-radius: inherit;
+  background: rgba(244, 63, 94, 0.24);
+  filter: blur(12px);
+}
+
+.streak-cool-header:not(.has-streak) .fire-emoji {
+  filter: grayscale(0.65) saturate(0.55);
+  opacity: 0.58;
+  animation: none;
+}
+
+.streak-cool-header:not(.has-streak) .fire-glow {
+  opacity: 0.12;
+  animation: none;
+}
+
+.streak-cool-header .streak-info {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-width: 0;
 }
 
 .streak-cool-header .streak-count {
-  font-size: 16px;
+  color: #9a3412;
+  font-size: 1.25rem;
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.streak-cool-header .streak-times {
+  margin-right: 1px;
+  font-size: 0.7em;
+  font-weight: 800;
+}
+
+.streak-cool-header .streak-label {
+  max-width: 88px;
+  color: #7c2d12;
+  font-size: 0.68rem;
+  font-weight: 650;
+  line-height: 1.15;
+  white-space: nowrap;
+}
+
+@keyframes profile-fire-breathe {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+  }
+  50% {
+    transform: translateY(-1px) scale(1.035);
+  }
+}
+
+@keyframes profile-glow-pulse {
+  0%,
+  100% {
+    transform: scale(0.92);
+    opacity: 0.58;
+  }
+  50% {
+    transform: scale(1.12);
+    opacity: 0.82;
+  }
 }
 
 .tooltip-btn {
@@ -3565,14 +3665,35 @@ onUnmounted(() => {
   box-shadow: 0 2px 6px rgba(250, 204, 21, 0.4);
 }
 
-.streak-cool-header {
-  font-size: 9px;
-}
-
 @media (max-width: 768px) {
   .streak-cool-header {
-    padding: 4px 12px;
+    gap: 1px;
+    min-height: 54px;
+    padding: 0;
     margin-right: 0;
+  }
+  .streak-cool-header .streak-fire-wrap {
+    width: 54px;
+    height: 54px;
+    flex-basis: 54px;
+  }
+  .streak-cool-header .fire-emoji {
+    width: 48px;
+    height: 48px;
+  }
+  .streak-cool-header .streak-count {
+    font-size: 1.08rem;
+  }
+  .streak-cool-header .streak-label {
+    max-width: 76px;
+    font-size: 0.62rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .streak-cool-header .fire-emoji,
+  .streak-cool-header .fire-glow {
+    animation: none;
   }
 }
 
@@ -3598,7 +3719,9 @@ onUnmounted(() => {
 }
 
 .fire-emoji {
-  font-size: 32px;
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
   position: relative;
   z-index: 2;
   animation: fire-vibe 0.5s ease-in-out infinite alternate;
@@ -5395,7 +5518,7 @@ onUnmounted(() => {
   flex: 1;
   min-width: 220px;
 }
-.goal-mini-select :deep(.select-trigger) {
+.goal-mini-select .select-trigger {
   min-height: 40px;
   padding: 10px 12px 2px;
   background: #fff;
@@ -5403,10 +5526,10 @@ onUnmounted(() => {
   font-size: 0.85rem;
   border-radius: 8px;
 }
-.goal-mini-select :deep(label) {
+.goal-mini-select label {
   display: none !important;
 }
-.goal-mini-select :deep(.select-caret) {
+.goal-mini-select .select-caret {
   top: 20px;
   border-top-color: #94a3b8;
 }
@@ -6028,7 +6151,7 @@ onUnmounted(() => {
     grid-template-columns: 1fr 1fr;
   }
 }
-.sim-select :deep(.select-trigger) {
+.sim-select .select-trigger {
   min-height: 38px;
   padding: 8px 10px 0px;
   background: #fff;
@@ -6036,10 +6159,10 @@ onUnmounted(() => {
   font-size: 0.82rem;
   border-radius: 8px;
 }
-.sim-select :deep(label) {
+.sim-select label {
   display: none !important;
 }
-.sim-select :deep(.select-caret) {
+.sim-select .select-caret {
   top: 18px;
   border-top-color: #64748b;
 }

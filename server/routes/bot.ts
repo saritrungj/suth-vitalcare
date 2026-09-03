@@ -1,4 +1,5 @@
 import express from "express";
+import crypto from "node:crypto";
 import dns from "node:dns";
 import { middleware, messagingApi } from "@line/bot-sdk";
 
@@ -6,7 +7,7 @@ import { middleware, messagingApi } from "@line/bot-sdk";
 dns.setDefaultResultOrder("ipv4first");
 import sharp from "sharp";
 import { callTyphoon } from "../lib/typhoon.js";
-import dotenv from "dotenv";
+import "../loadEnv.js";
 import { pool } from "../mysql.js";
 import {
   encrypt,
@@ -21,14 +22,31 @@ import { fileURLToPath } from "url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-dotenv.config();
-
 const router = express.Router();
 
 const config = {
   channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN || "",
   channelSecret: process.env.LINE_CHANNEL_SECRET || "",
 };
+
+const hasLineBotCredentials = Boolean(
+  config.channelAccessToken && config.channelSecret,
+);
+
+if (process.env.NODE_ENV === "production" && !hasLineBotCredentials) {
+  throw new Error(
+    "LINE_CHANNEL_ACCESS_TOKEN and LINE_CHANNEL_SECRET are required in production",
+  );
+}
+
+const lineWebhookMiddleware: express.RequestHandler = hasLineBotCredentials
+  ? middleware(config)
+  : (_req, res) => {
+      res.status(503).json({
+        error:
+          "LINE bot is disabled in local development because its credentials are not configured",
+      });
+    };
 
 const client = new messagingApi.MessagingApiClient({
   channelAccessToken: config.channelAccessToken,
@@ -1345,7 +1363,7 @@ async function handleEvent(event: any) {
       };
 
       const dateStr = getBangkokDateString();
-      const uniqueSuffix = Math.random().toString(36).substring(2, 8);
+      const uniqueSuffix = crypto.randomBytes(6).toString("hex");
       const filename = `bot-${userId}-${dateStr}-${uniqueSuffix}.png`;
       const uploadDir = path.join(
         __dirname,
@@ -2435,7 +2453,7 @@ router.post(
     console.log("Headers:", JSON.stringify(req.headers, null, 2));
     next();
   },
-  middleware(config),
+  lineWebhookMiddleware,
   (req, res) => {
     const events = req.body.events || [];
     console.log(

@@ -1,6 +1,5 @@
 import crypto from "crypto";
-import dotenv from "dotenv";
-dotenv.config();
+import "../loadEnv.js";
 
 // 32-byte (256-bit) key for AES-256
 // We require this to securely encrypt PII data

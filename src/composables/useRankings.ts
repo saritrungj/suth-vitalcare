@@ -49,6 +49,7 @@ export function useRankings() {
     return filteredActivities.value.slice(0, activityVisibleCount.value);
   });
   const hasJoinedActivities = computed(() => allActivities.value.length > 0);
+  const isAdmin = computed(() => authStore.user?.role === "admin");
   const loadMoreActivities = () => {
     if (activityVisibleCount.value < filteredActivities.value.length) {
       activityVisibleCount.value += 20;
@@ -198,11 +199,6 @@ export function useRankings() {
   // Canonical activity score (base + streak bonus + admin adjustment).
   // Present on both individual and team leaderboard rows from computeLeaderboard.
   const getScore = (item: any) => Number(item.total_points) || 0;
-  const getScoreParts = (item: any) => ({
-    base: Number(item.base_points) || 0,
-    streakBonus: Number(item.streak_bonus) || 0,
-    adjustment: Number(item.adjustment) || 0,
-  });
   const getPercent = (item: any) => {
     const target = getTarget(item);
     if (target <= 0) return 0;
@@ -232,6 +228,18 @@ export function useRankings() {
       return;
     }
     try {
+      if (isAdmin.value) {
+        const activities = await abortableJson<any[]>(
+          "/api/activities?manage=true",
+        );
+        allActivities.value = (activities || []).map((activity) => ({
+          id: activity.id,
+          title: activity.title,
+          goal_config: activity.goal_config,
+          joined_at: activity.start_date || activity.created_at,
+        }));
+        return;
+      }
       const regs = await abortableJson<any[]>(
         `/api/users/${uid}/registrations`,
       );
@@ -524,9 +532,9 @@ export function useRankings() {
   onMounted(async () => {
     await Promise.all([fetchActivities(), fetchFilterOptions()]);
     const eid = route.query.eventId || route.query.activity_id;
-    const joinedIds = allActivities.value.map((a) => String(a.id));
+    const availableIds = allActivities.value.map((a) => String(a.id));
     let chosen: string | null = null;
-    if (eid && joinedIds.includes(String(eid))) {
+    if (eid && availableIds.includes(String(eid))) {
       chosen = String(eid);
     } else if (allActivities.value.length > 0) {
       chosen = String(allActivities.value[0].id);
@@ -628,10 +636,10 @@ export function useRankings() {
     getImage,
     isCurrentUser,
     hasJoinedActivities,
+    isAdmin,
     getTarget,
     isReached,
     getScore,
-    getScoreParts,
     getPercent,
     getTeamMembers,
     getTeamMemberCount,

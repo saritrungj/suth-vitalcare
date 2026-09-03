@@ -170,7 +170,12 @@ export function useAdminUserDetail(userId: number) {
       const r = await fetch(`${API}/activities/${eventId}/bonus-points`, {
         method: "POST",
         headers: headers(),
-        body: JSON.stringify({ user_id: userId, points, reason }),
+        body: JSON.stringify({
+          user_id: userId,
+          points,
+          reason,
+          target: "ranking",
+        }),
       });
       if (!r.ok)
         throw new Error(

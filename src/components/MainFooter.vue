@@ -32,7 +32,7 @@ const goTo = (path: string) => {
           </p>
           <p>
             <a
-              href="http://www.suth.go.th"
+              href="https://www.suth.go.th"
               target="_blank"
               rel="noopener noreferrer"
               class="hover-text-primary"

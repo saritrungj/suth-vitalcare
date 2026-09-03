@@ -31,3 +31,42 @@ export const safeImageUrl = (url: unknown): string => {
   }
   return "";
 };
+
+const DEFAULT_EXTERNAL_HOSTS = new Set([
+  "suth.go.th",
+  "www.suth.go.th",
+  "ptpioneer.com",
+  "www.ptpioneer.com",
+  "ironman.com",
+  "www.ironman.com",
+]);
+
+export const safeLinkUrl = (url: unknown): string => {
+  if (typeof url !== "string") return "";
+  const trimmed = url.trim();
+  if (!trimmed) return "";
+  if (trimmed.startsWith("/") && !trimmed.startsWith("//")) return trimmed;
+  try {
+    const parsed = new URL(trimmed);
+    return parsed.protocol === "https:" && DEFAULT_EXTERNAL_HOSTS.has(parsed.hostname.toLowerCase())
+      ? parsed.toString()
+      : "";
+  } catch {
+    return "";
+  }
+};
+
+export const safeInternalPath = (value: unknown): string => {
+  if (typeof value !== "string") return "";
+  const path = value.trim();
+  return path.startsWith("/") && !path.startsWith("//") && !/[\u0000-\u001f]/.test(path)
+    ? path
+    : "";
+};
+
+export const openSafeExternalUrl = (url: unknown): boolean => {
+  const safe = safeLinkUrl(url);
+  if (!safe || safe.startsWith("/")) return false;
+  window.open(safe, "_blank", "noopener,noreferrer");
+  return true;
+};

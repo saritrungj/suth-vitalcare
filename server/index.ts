@@ -1,14 +1,14 @@
-// ต้องมาก่อน import อื่น ๆ เพื่อโหลด env จาก .env ก่อนโมดูลที่อ่าน process.env
+// ต้องมาก่อน import อื่น ๆ เพื่อโหลด env ตาม runtime ก่อนโมดูลที่อ่าน process.env
 // ตอน import (เช่น ./mysql.js สร้าง pool ทันที)
 import "./loadEnv.js";
 import express from "express";
-import { createServer as createViteServer } from "vite";
 import path from "path";
 import { fileURLToPath } from "url";
 import multer from "multer";
 import rateLimit from "express-rate-limit";
 import compression from "compression";
 import http from "http";
+import crypto from "node:crypto";
 import { pool } from "./mysql.js";
 
 // ── CORS for production (IIS reverse proxy / cross-domain) ──────────────────
@@ -41,6 +41,12 @@ import exportRouter from "./routes/export.js";
 import notificationsRouter from "./routes/notifications.js";
 import registrationRouter from "./routes/registration.js";
 import { initRealtime } from "./lib/realtime.js";
+import {
+  assertSessionConfiguration,
+  attachVerifiedIdentity,
+  requireSession,
+} from "./lib/session.js";
+import { safeMediaRedirect } from "./lib/safeUrl.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -133,14 +139,76 @@ fs.promises
 
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB raw upload limit
+  limits: {
+    fileSize: 10 * 1024 * 1024,
+    files: 1,
+    fields: 8,
+    parts: 10,
+    fieldNameSize: 100,
+    fieldSize: 16 * 1024,
+  },
+  fileFilter: (_req, file, callback) => {
+    const allowed = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
+    const accepted = allowed.has(file.mimetype);
+    callback(null, accepted);
+  },
 });
 
 async function startServer() {
+  assertSessionConfiguration();
   const app = express();
+  app.disable("x-powered-by");
+
+  // Process readiness must not depend on MySQL. IIS/PM2 and deployment smoke
+  // tests use this endpoint to distinguish a running Node process from backend
+  // feature health, which is reported by the API routes themselves.
+  app.get("/health", (_req, res) => {
+    res.json({
+      status: "ok",
+      environment: process.env.NODE_ENV || "development",
+    });
+  });
+
+  app.use((_req, res, next) => {
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+    res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+    res.setHeader("Cross-Origin-Opener-Policy", "same-origin-allow-popups");
+    res.setHeader(
+      "Content-Security-Policy",
+      "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'self'; form-action 'self'; script-src 'self' 'sha256-9id4XSTjrDD2LbxNYwrV/rqUPxJsa5tFaWgrwtHQvCI=' https://static.line-scdn.net https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https://api.line.me https://liffsdk.line-scdn.net https://challenges.cloudflare.com https://api.opentyphoon.ai wss:; frame-src https://challenges.cloudflare.com; upgrade-insecure-requests",
+    );
+    if (process.env.NODE_ENV === "production") {
+      res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+    }
+    next();
+  });
 
   // ── CORS (รองรับ IIS reverse proxy และ cross-domain) ───────────────────────
-  app.use(cors({ origin: true, credentials: true }));
+  const configuredOrigins = String(
+    process.env.ALLOWED_ORIGINS || process.env.FRONTEND_URL || "",
+  )
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+  app.use(
+    cors({
+      credentials: true,
+      origin(origin, callback) {
+        if (!origin) return callback(null, true);
+        if (
+          configuredOrigins.includes(origin) ||
+          (process.env.NODE_ENV !== "production" &&
+            /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin))
+        ) {
+          return callback(null, true);
+        }
+        return callback(new Error("Origin is not allowed"));
+      },
+      methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+      allowedHeaders: ["Content-Type", "X-Client-Silent-Errors"],
+    }),
+  );
 
   // ── Gzip Compression (ลด Response Size ได้ 60-80%) ────────────────────────────
   app.use(compression());
@@ -251,8 +319,39 @@ async function startServer() {
   // Handle proxy headers (e.g. ngrok, cloudflare)
   app.set("trust proxy", 1);
 
+  // A browser-supplied identity header is never authoritative. Existing route
+  // handlers may keep reading x-user-id because this middleware replaces it
+  // with the user ID from a signed, HttpOnly session cookie.
+  app.use("/api", attachVerifiedIdentity);
+
   // Bot Route ABOVE express.json
   app.use("/api/bot", botRouter);
+
+  const apiLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: 2000,
+    message: { error: "Too many requests" },
+    standardHeaders: true,
+    legacyHeaders: false,
+  });
+  const authLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: 20,
+    message: { error: "Too many authentication attempts" },
+    standardHeaders: true,
+    legacyHeaders: false,
+  });
+  app.use("/api", apiLimiter);
+  app.use(
+    [
+      "/api/users/login",
+      "/api/users/login-email",
+      "/api/users/register-email",
+      "/api/users/forgot-password",
+      "/api/users/reset-password",
+    ],
+    authLimiter,
+  );
 
   /*
   // Global Rate Limiting — ตั้งสูงพอสำหรับ Production จริง
@@ -289,6 +388,22 @@ async function startServer() {
     return next(err);
   });
 
+  const publicMutationPaths = new Set([
+    "/users/login",
+    "/users/login-email",
+    "/users/login-google",
+    "/users/register-email",
+    "/users/forgot-password",
+    "/users/reset-password",
+    "/users/logout",
+    "/client-logs",
+  ]);
+  app.use("/api", (req, res, next) => {
+    if (!["POST", "PUT", "PATCH", "DELETE"].includes(req.method)) return next();
+    if (publicMutationPaths.has(req.path)) return next();
+    return requireSession(req, res, next);
+  });
+
   app.use("/api/users", userRouter);
   app.use("/api/user", userRouter);
   app.use("/api/registrations", registrationRouter);
@@ -320,6 +435,22 @@ async function startServer() {
   // Returns: { url: "/uploads/activity/ชื่อ-20260505.png" }
   app.post(
     "/api/upload",
+    async (req, res, next) => {
+      const userId = req.headers["x-user-id"];
+      const uploadType = String(req.query.type || "");
+      if (!["activity", "profile", "banners", "submissions"].includes(uploadType)) {
+        return res.status(400).json({ error: "Invalid upload type" });
+      }
+      const [rows]: any = await pool.query("SELECT role FROM users WHERE id = ?", [userId]);
+      const role = rows[0]?.role;
+      if (uploadType === "banners" && role !== "admin") {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+      if (uploadType === "activity" && role !== "admin" && role !== "host") {
+        return res.status(403).json({ error: "Admin or host access required" });
+      }
+      return next();
+    },
     (req, res, next) => {
       console.log("[upload:start]", {
         method: req.method,
@@ -384,7 +515,7 @@ async function startServer() {
 
         // Sanitize: keep Thai letters, remove illegal filename chars, collapse spaces
         const dateStr = getBangkokDateString(); // e.g. 2026-05-05
-        const uniqueSuffix = Math.random().toString(36).substring(2, 8);
+        const uniqueSuffix = crypto.randomBytes(6).toString("hex");
         const safeName = rawName
           .replace(/[\\/:*?"<>|]/g, "") // remove illegal filename chars
           .replace(/\s+/g, "-") // spaces → dash
@@ -439,13 +570,13 @@ async function startServer() {
             `[upload] ${subFolder}/${filenameBase}.${outputExt} | ${meta.width}x${meta.height}px | ${(outputBuffer.length / 1024).toFixed(0)} KB`,
           );
         } catch (sharpError: any) {
-          console.error("[upload:sharp-fallback]", {
+          console.error("[upload:sharp-rejected]", {
             message: sharpError?.message,
             originalname: file.originalname,
             mimetype: file.mimetype,
             size: file.size,
           });
-          appendDailyUploadError("sharp-fallback-original-file", {
+          appendDailyUploadError("sharp-processing-rejected", {
             message: sharpError?.message,
             originalname: file.originalname,
             mimetype: file.mimetype,
@@ -453,44 +584,20 @@ async function startServer() {
             uploadType,
             subFolder,
           });
+          return res.status(422).json({ error: "Invalid or unsupported image" });
         }
 
         const filename = `${filenameBase}.${outputExt}`;
         const destPath = path.join(uploadDir, subFolder, filename);
         await fs.promises.mkdir(path.dirname(destPath), { recursive: true });
 
-        // Write processed file, or original file if sharp failed/timed out.
+        // Only re-encoded image bytes are persisted. Never serve the original
+        // upload when decoding fails because its claimed MIME type is untrusted.
         await fs.promises.writeFile(destPath, outputBuffer);
         const writtenStat = await fs.promises.stat(destPath);
 
-        // --- AUTOMATED FILE CLEANUP ---
-        // Delete the old file if oldUrl is provided and points to our uploads directory
-        const oldUrl = req.query.oldUrl ? String(req.query.oldUrl) : null;
-        if (oldUrl && oldUrl.startsWith("/uploads/")) {
-          try {
-            // Reconstruct path to prevent directory traversal
-            const relativeOldPath = oldUrl.substring("/uploads/".length); // e.g., "profile/user-123.png"
-            // We split and join to ensure it's normalized and safely within the uploadDir
-            const oldFilePath = path.join(
-              uploadDir,
-              ...relativeOldPath.split("/").filter(Boolean),
-            );
-
-            // Verify it exists and is indeed a file within the uploadDir
-            if (
-              oldFilePath.startsWith(uploadDir) &&
-              fs.existsSync(oldFilePath)
-            ) {
-              await fs.promises.unlink(oldFilePath);
-              console.log("[upload:cleanup:success]", { deletedUrl: oldUrl });
-            }
-          } catch (cleanupError: any) {
-            console.warn("[upload:cleanup:failed]", {
-              oldUrl,
-              error: cleanupError.message,
-            });
-          }
-        }
+        // Client-directed old-file deletion is disabled until upload ownership
+        // is persisted. A URL alone is not proof that the caller owns a file.
 
         // Return a root-relative URL so Vite dev server & Express serve it correctly
         console.log("[upload:success]", {
@@ -531,6 +638,10 @@ async function startServer() {
 
   // DELETE /api/upload — specifically to clean up intermediate uploads if form is cancelled
   app.delete("/api/upload", async (req, res) => {
+    return res.status(403).json({
+      error: "Client-directed file deletion is disabled; ownership must be verified",
+    });
+    /* istanbul ignore next -- retained temporarily for migration reference */
     try {
       const { oldUrl } = req.body;
       if (!oldUrl || !oldUrl.startsWith("/uploads/")) {
@@ -566,6 +677,10 @@ async function startServer() {
     "/api/upload-cleanup",
     express.text({ type: "*/*" }),
     async (req, res) => {
+      // A beacon containing a public URL is not proof of ownership. Ignore the
+      // cleanup request instead of allowing cross-user file deletion.
+      return res.status(204).send();
+      /* istanbul ignore next -- retained temporarily for migration reference */
       try {
         // parse body (อาจเป็น string หรือ object ขึ้นอยู่กับ middleware ที่รับ)
         let oldUrl: string | undefined;
@@ -620,14 +735,18 @@ async function startServer() {
 
       if (b64 && b64.startsWith("data:image/")) {
         const parts = b64.split(",");
-        const mime = parts[0].match(/:(.*?);/)?.[1] || "image/png";
+        const mime = parts[0].match(/:(image\/(?:png|jpeg|webp|gif));/)?.[1];
+        if (!mime || !parts[1]) return res.status(400).send("Invalid image data");
         const data = Buffer.from(parts[1], "base64");
         res.setHeader("Content-Type", mime);
         res.setHeader("Cache-Control", "no-cache");
         return res.send(data);
       } else if (b64 && b64.startsWith("/uploads/")) {
-        // Serve the file directly from disk
-        const filePath = path.join(__dirname, "../public", b64);
+        const publicRoot = path.resolve(__dirname, "../public");
+        const filePath = path.resolve(publicRoot, `.${b64}`);
+        if (!filePath.startsWith(publicRoot + path.sep)) {
+          return res.status(400).send("Invalid image path");
+        }
         return res.sendFile(filePath);
       }
       res.status(400).send("Invalid image data format");
@@ -650,15 +769,17 @@ async function startServer() {
       const b64 = rows[0].img_url;
       if (b64 && b64.startsWith("data:image/")) {
         const parts = b64.split(",");
-        const mime = parts[0].match(/:(.*?);/)?.[1] || "image/png";
+        const mime = parts[0].match(/:(image\/(?:png|jpeg|webp|gif));/)?.[1];
+        if (!mime || !parts[1]) return res.status(400).send("Invalid image data");
         const data = Buffer.from(parts[1], "base64");
         res.setHeader("Content-Type", mime);
         res.setHeader("Cache-Control", "public, max-age=31536000"); // Cache permanently for saved submissions
         return res.send(data);
       }
       // If it's a legacy URL (not base64), redirect or handle accordingly
-      if (b64 && b64.startsWith("http")) {
-        return res.redirect(b64);
+      const redirectUrl = safeMediaRedirect(b64);
+      if (redirectUrl) {
+        return res.redirect(302, redirectUrl);
       }
       res.status(400).send("Invalid image data");
     } catch (err: any) {
@@ -818,6 +939,9 @@ async function startServer() {
 
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
+    // Vite is a devDependency and must not be required by a production-only
+    // install. Keep the import inside the development branch.
+    const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       root: path.resolve(__dirname, "../"),
       server: { middlewareMode: true, allowedHosts: true },

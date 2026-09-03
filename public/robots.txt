@@ -1,0 +1,17 @@
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /profile
+Disallow: /health
+Disallow: /body-composition
+Disallow: /missions
+Disallow: /my-activities
+Disallow: /teams
+Disallow: /create-teams
+Disallow: /shop
+Disallow: /register
+Disallow: /forgot-password
+Disallow: /reset-password
+Disallow: /api/
+
+Sitemap: https://vitalcare.suth.go.th/sitemap.xml

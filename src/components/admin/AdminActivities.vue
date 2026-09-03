@@ -351,7 +351,7 @@ const getTaskCount = (act: any) => {
   return Array.isArray(act.tasks) ? act.tasks.length : 0;
 };
 const previewActivity = (act: any) => {
-  window.open(`/activities/${act.id}`, "_blank");
+  window.open(`/activities/${act.id}`, "_blank", "noopener,noreferrer");
 };
 const exportFullReport = async (act: any) => {
   const eventStartStr = act.start_date

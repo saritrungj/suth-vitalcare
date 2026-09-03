@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from "vue";
-import { X, Users, Flame, Loader2 } from "lucide-vue-next";
+import { X, Users, Loader2 } from "lucide-vue-next";
 import { safeImageUrl } from "../lib/safeUrl";
 import { langStore } from "../store/lang";
 
@@ -112,7 +112,11 @@ const share = (m: any) => {
                   <div class="tm-item-name-line">
                     <span class="tm-item-name">{{ m.name }}</span>
                     <span v-if="m.streak >= 1" class="tm-item-streak">
-                      <Flame :size="11" />{{ m.streak }}
+                      <img
+                        class="tm-streak-icon"
+                        src="/Streak%20fire.svg"
+                        alt=""
+                      />{{ m.streak }}
                     </span>
                   </div>
                   <div class="tm-item-track">
@@ -388,7 +392,7 @@ const share = (m: any) => {
 .tm-item-streak {
   display: inline-flex;
   align-items: center;
-  gap: 1px;
+  gap: 2px;
   flex-shrink: 0;
   font-size: 0.66rem;
   font-weight: 700;
@@ -396,7 +400,12 @@ const share = (m: any) => {
   background: #fff0e6;
   border: 1px solid #fed7aa;
   border-radius: 99px;
-  padding: 0 6px;
+  padding: 1px 6px;
+}
+.tm-streak-icon {
+  width: 34px;
+  height: 34px;
+  object-fit: contain;
 }
 
 .tm-item-track {

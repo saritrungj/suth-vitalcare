@@ -1,5 +1,5 @@
 import mysql from "mysql2/promise";
-// โหลด env จาก .env ก่อนสร้าง pool
+// โหลด env ตาม runtime (.env.local หรือ .env.production) ก่อนสร้าง pool
 import "./loadEnv.js";
 
 // Create a connection pool instead of a single connection for better performance and concurrency
@@ -12,6 +12,6 @@ export const pool = mysql.createPool({
   waitForConnections: true,
   connectionLimit: 20, // ลดจาก 300 → 20 (เหมาะกับ MySQL 5.7 ทั่วไป)
   queueLimit: 50,
-  connectTimeout: 30000, // เพิ่มจาก 10s → 30s สำหรับ network ช้า
+  connectTimeout: Number(process.env.DB_CONNECT_TIMEOUT_MS) || 30000,
   dateStrings: true,
 });

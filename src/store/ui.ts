@@ -34,7 +34,7 @@ export const uiStore = reactive({
   isPageLoading: false,
   loadingMessage: "",
   // SEO Management
-  pageTitle: "VitalCare",
+  pageTitle: "SUTH VitalCare | ระบบส่งเสริมสุขภาพและกิจกรรม",
   // Fatal Error States (หน้า Error พรีเมียม)
   errorState: {
     hasError: false,
@@ -100,7 +100,9 @@ export const uiStore = reactive({
     this.loadingMessage = message;
   },
   setPageTitle(title: string) {
-    this.pageTitle = title ? `${title} | VitalCare` : "VitalCare";
+    this.pageTitle = title
+      ? `${title} | SUTH VitalCare`
+      : "SUTH VitalCare | ระบบส่งเสริมสุขภาพและกิจกรรม";
     if (typeof document !== "undefined") {
       // NFC normalize: กัน title เพี้ยนบน WebView บางตัวที่ render สระ/วรรณยุกต์
       // ไทยแบบ decomposed (NFD) ผิดตำแหน่ง เช่นข้อมูลที่ผ่านมาจาก macOS/iOS

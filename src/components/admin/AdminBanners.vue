@@ -29,6 +29,7 @@ import { authStore } from "../../store/auth";
 import { uiStore } from "../../store/ui";
 import { useRoute, useRouter } from "vue-router";
 import { showSuccess, showError, showConfirm } from "../../lib/swal";
+import { openSafeExternalUrl } from "../../lib/safeUrl";
 
 const route = useRoute();
 const router = useRouter();
@@ -275,7 +276,7 @@ watch(modalPreviewIndex, (newIdx) => {
 
 // --- ฟังก์ชันสำหรับเปิดดูหน้าเว็บผู้ใช้จริง ---
 const viewOnFrontend = () => {
-  window.open("/", "_blank");
+  window.open("/", "_blank", "noopener,noreferrer");
 };
 // ----------------------------------------
 
@@ -775,7 +776,7 @@ const resetForm = async () => {
   }
 };
 
-const openLink = (url: string) => window.open(url, "_blank");
+const openLink = (url: string) => openSafeExternalUrl(url);
 </script>
 
 <template>

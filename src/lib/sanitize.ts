@@ -1,4 +1,5 @@
 import DOMPurify from "dompurify";
+import { safeLinkUrl } from "./safeUrl";
 
 /**
  * Safely sanitize admin/user-authored HTML before rendering with `v-html`.
@@ -68,8 +69,18 @@ export const sanitizeHtml = (html: string): string => {
 // Ensure external links opened from sanitized content can't access window.opener
 if (typeof window !== "undefined") {
   DOMPurify.addHook("afterSanitizeAttributes", (node) => {
-    if (node.tagName === "A" && node.getAttribute("target") === "_blank") {
-      node.setAttribute("rel", "noopener noreferrer");
+    if (node.tagName === "A") {
+      const href = node.getAttribute("href");
+      const safeHref = safeLinkUrl(href);
+      if (!safeHref) {
+        node.removeAttribute("href");
+        node.removeAttribute("target");
+      } else {
+        node.setAttribute("href", safeHref);
+        if (node.getAttribute("target") === "_blank") {
+          node.setAttribute("rel", "noopener noreferrer");
+        }
+      }
     }
   });
 }

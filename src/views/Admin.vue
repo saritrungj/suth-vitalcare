@@ -136,7 +136,8 @@ const ADMIN_DOCS = computed(() => [
 
 const selectedDocPath = ref(ADMIN_DOCS.value[0].path);
 const selectedDocUrl = computed(() => encodeURI(selectedDocPath.value));
-const openDocInNewTab = () => window.open(selectedDocUrl.value, "_blank");
+const openDocInNewTab = () =>
+  window.open(selectedDocUrl.value, "_blank", "noopener,noreferrer");
 // ─── Lifecycle ────────────────────────────────────────────────────────────
 onMounted(() => {
   const user = authStore.user;

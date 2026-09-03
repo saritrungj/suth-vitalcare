@@ -38,7 +38,10 @@ router.post("/", async (req, res) => {
       safeDetail = raw.length > 2000 ? { truncated: true } : detail;
     }
 
-    await logAction(req, {
+    // Diagnostics must never hold the browser request open while MySQL is
+    // unavailable. The logger already handles its own errors, so dispatch it
+    // in the background and acknowledge the client immediately.
+    void logAction(req, {
       action: `client_${event}`,
       targetType: "client_diag",
       description: `[client-diag] ${event}${url ? ` @ ${url}` : ""}`,

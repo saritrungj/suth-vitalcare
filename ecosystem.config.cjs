@@ -31,7 +31,7 @@ module.exports = {
       cwd: projectRoot,
       instances: 1,
       exec_mode: "fork", // Windows: must use fork mode (cluster mode is unreliable)
-      env: {
+      env_production: {
         NODE_ENV: "production",
         PORT: 5001,
       },

@@ -1,7 +1,7 @@
 import { ref, onMounted, onUnmounted, nextTick, computed, watch } from "vue";
 import { authStore } from "../store/auth";
 import { uiStore } from "../store/ui";
-import * as XLSX from "xlsx";
+import { exportWorkbook } from "../lib/exportXlsx";
 import {
   Briefcase,
   Users,
@@ -2535,11 +2535,8 @@ export function useAdminOverview() {
   }
 
   function downloadCSV(filename: string, headers: string[], rows: any[][]) {
-    const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Data");
     const xlsxFilename = filename.replace(".csv", ".xlsx");
-    XLSX.writeFile(wb, xlsxFilename);
+    void exportWorkbook(xlsxFilename, [{ name: "Data", rows: [headers, ...rows] }]);
   }
 
   const getTeamName = (teamId: number | string) => {

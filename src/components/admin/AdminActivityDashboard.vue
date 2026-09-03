@@ -69,6 +69,7 @@ ChartJS.register(
   BarElement,
 );
 import { swal } from "../../lib/swal";
+import { safeImageUrl } from "../../lib/safeUrl";
 
 const props = defineProps<{
   activityId: number;
@@ -114,6 +115,7 @@ const {
   bulkDeleteSubmissions,
   assignTeam,
   removeParticipants,
+  addParticipantPoints,
   toggleTaskFilter,
   totalParticipants,
   totalSubmissions,
@@ -177,6 +179,54 @@ const {
 
 const showBulkSubMenu = ref(false);
 const activeMenuId = ref<number | string | null>(null);
+
+const showPointsModal = ref(false);
+const pointsParticipant = ref<any>(null);
+const pointsTarget = ref<"shop" | "ranking">("ranking");
+const pointsAmount = ref<number | null>(null);
+const pointsReason = ref("");
+const rankingScoreByUserId = computed(
+  () =>
+    new Map(
+      rankingsIndividual.value.map((row: any) => [
+        Number(row.id),
+        Number(row.total_points) || 0,
+      ]),
+    ),
+);
+const getParticipantRankingScore = (participant: any) =>
+  rankingScoreByUserId.value.get(Number(participant.user_id)) || 0;
+const openPointsModal = (participant: any) => {
+  pointsParticipant.value = participant;
+  pointsTarget.value = "ranking";
+  pointsAmount.value = null;
+  pointsReason.value = "";
+  showPointsModal.value = true;
+};
+const closePointsModal = () => {
+  if (updatingId.value) return;
+  showPointsModal.value = false;
+  pointsParticipant.value = null;
+};
+const submitParticipantPoints = async () => {
+  const participant = pointsParticipant.value;
+  const amount = Number(pointsAmount.value);
+  if (!participant || !Number.isSafeInteger(amount) || amount <= 0) {
+    await swal.fire({
+      icon: "warning",
+      title: "กรุณาระบุคะแนน",
+      text: "คะแนนต้องเป็นจำนวนเต็มมากกว่า 0",
+    });
+    return;
+  }
+  const saved = await addParticipantPoints(
+    Number(participant.user_id),
+    amount,
+    pointsTarget.value,
+    pointsReason.value.trim(),
+  );
+  if (saved) closePointsModal();
+};
 
 // Health Assessment Result Modal
 const showAssessmentModal = ref(false);
@@ -1859,10 +1909,15 @@ const handleEditTracking = async (sub: any) => {
                   ส่งภารกิจ
                 </th>
                 <th
-                  class="p-4 text-sm font-bold text-slate-700 bg-slate-50 border-r border-slate-100 whitespace-nowrap min-w-[100px] text-center"
+                  class="p-4 text-sm font-bold text-slate-700 bg-slate-50 border-r border-slate-100 whitespace-nowrap min-w-[110px] text-center"
+                >
+                  คะแนนร้าน
+                </th>
+                <th
+                  class="p-4 text-sm font-bold text-slate-700 bg-slate-50 border-r border-slate-100 whitespace-nowrap min-w-[170px] text-center"
                 >
                   <span class="inline-flex items-center gap-1 justify-center">
-                    <Trophy :size="15" />คะแนน
+                    <Trophy :size="15" />คะแนนอันดับ
                   </span>
                 </th>
                 <th
@@ -2004,12 +2059,27 @@ const handleEditTracking = async (sub: any) => {
                   <span
                     class="text-xs sm:text-sm whitespace-nowrap font-bold text-orange-500"
                   >
-                    {{
-                      Number(
-                        item.total_score || item.score || 0,
-                      ).toLocaleString()
-                    }}
+                    {{ Number(item.shop_points || 0).toLocaleString() }}
                   </span>
+                </td>
+                <td class="p-4 text-center">
+                  <div class="inline-flex items-center gap-2">
+                    <span
+                      class="text-xs sm:text-sm whitespace-nowrap font-bold text-indigo-600"
+                    >
+                      {{ getParticipantRankingScore(item).toLocaleString() }}
+                    </span>
+                    <button
+                      v-if="authStore.user?.role === 'admin'"
+                      type="button"
+                      class="inline-flex items-center gap-1 rounded-lg bg-orange-50 px-2.5 py-1.5 text-xs font-bold text-orange-600 transition-colors hover:bg-orange-100 disabled:opacity-50"
+                      :disabled="updatingId === item.user_id"
+                      title="เพิ่มคะแนนร้านหรือคะแนนอันดับ"
+                      @click="openPointsModal(item)"
+                    >
+                      <Plus :size="14" /> เพิ่มคะแนน
+                    </button>
+                  </div>
                 </td>
                 <td class="p-4">
                   <div
@@ -2090,7 +2160,7 @@ const handleEditTracking = async (sub: any) => {
               </tr>
               <tr v-if="filteredRegistrants.length === 0">
                 <td
-                  colspan="13"
+                  colspan="14"
                   class="p-10 text-center text-slate-400 font-bold"
                 >
                   ไม่พบรายชื่อผู้เข้าร่วมที่ค้นหา
@@ -2395,13 +2465,14 @@ const handleEditTracking = async (sub: any) => {
                 </td>
                 <td class="p-4 text-center">
                   <a
-                    v-if="item.img_url"
-                    :href="item.img_url"
+                    v-if="safeImageUrl(item.img_url)"
+                    :href="safeImageUrl(item.img_url)"
                     target="_blank"
+                    rel="noopener noreferrer"
                     class="inline-block hover:opacity-80 transition-opacity"
                   >
                     <img
-                      :src="item.img_url"
+                      :src="safeImageUrl(item.img_url)"
                       class="w-10 h-10 sm:w-12 sm:h-12 object-cover rounded-xl border border-slate-200 mx-auto"
                     />
                   </a>
@@ -4388,6 +4459,122 @@ const handleEditTracking = async (sub: any) => {
                 ไม่มีข้อมูลรายละเอียดการประเมิน
               </div>
             </div>
+          </div>
+        </div>
+      </div>
+    </Transition>
+  </Teleport>
+  <Teleport to="body">
+    <Transition name="fade">
+      <div
+        v-if="showPointsModal"
+        class="fixed inset-0 z-[220] flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-sm"
+        @click.self="closePointsModal"
+      >
+        <div
+          class="w-full max-w-lg rounded-3xl bg-white p-6 soft-shadow-lg sm:p-7"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="points-modal-title"
+        >
+          <div class="flex items-start justify-between gap-4">
+            <div>
+              <p class="text-xs font-bold uppercase tracking-wider text-orange-500">
+                จัดการคะแนนผู้เข้าร่วม
+              </p>
+              <h3
+                id="points-modal-title"
+                class="mt-1 text-xl font-extrabold text-slate-900"
+              >
+                {{ pointsParticipant?.fname_th }}
+                {{ pointsParticipant?.lname_th }}
+              </h3>
+            </div>
+            <button
+              type="button"
+              class="rounded-full p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+              :disabled="!!updatingId"
+              aria-label="ปิด"
+              @click="closePointsModal"
+            >
+              <X :size="20" />
+            </button>
+          </div>
+
+          <div class="mt-6 grid grid-cols-2 gap-3">
+            <button
+              type="button"
+              class="rounded-2xl border p-4 text-left transition-colors"
+              :class="
+                pointsTarget === 'ranking'
+                  ? 'border-indigo-500 bg-indigo-50 text-indigo-800'
+                  : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+              "
+              @click="pointsTarget = 'ranking'"
+            >
+              <span class="block text-sm font-extrabold">คะแนนอันดับ</span>
+              <span class="mt-1 block text-xs">ใช้จัดอันดับกิจกรรมนี้</span>
+            </button>
+            <button
+              type="button"
+              class="rounded-2xl border p-4 text-left transition-colors"
+              :class="
+                pointsTarget === 'shop'
+                  ? 'border-orange-500 bg-orange-50 text-orange-800'
+                  : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+              "
+              @click="pointsTarget = 'shop'"
+            >
+              <span class="block text-sm font-extrabold">คะแนนร้าน</span>
+              <span class="mt-1 block text-xs">ใช้แลกรางวัลในร้านค้า</span>
+            </button>
+          </div>
+
+          <label class="mt-5 block">
+            <span class="text-sm font-bold text-slate-700">จำนวนคะแนน</span>
+            <input
+              v-model.number="pointsAmount"
+              type="number"
+              min="1"
+              step="1"
+              inputmode="numeric"
+              class="mt-2 w-full rounded-2xl border border-slate-200 px-4 py-3 text-lg font-extrabold text-slate-900 outline-none transition focus:border-orange-400 focus:ring-4 focus:ring-orange-100"
+              placeholder="เช่น 10"
+              @keyup.enter="submitParticipantPoints"
+            />
+          </label>
+          <label class="mt-4 block">
+            <span class="text-sm font-bold text-slate-700">
+              เหตุผล <span class="font-normal text-slate-400">(ไม่บังคับ)</span>
+            </span>
+            <input
+              v-model="pointsReason"
+              type="text"
+              maxlength="500"
+              class="mt-2 w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm font-medium text-slate-900 outline-none transition focus:border-orange-400 focus:ring-4 focus:ring-orange-100"
+              placeholder="ระบุเหตุผลเพื่อใช้ตรวจสอบย้อนหลัง"
+            />
+          </label>
+
+          <div class="mt-6 flex justify-end gap-3">
+            <button
+              type="button"
+              class="rounded-xl bg-slate-100 px-5 py-2.5 text-sm font-bold text-slate-600 hover:bg-slate-200"
+              :disabled="!!updatingId"
+              @click="closePointsModal"
+            >
+              ยกเลิก
+            </button>
+            <button
+              type="button"
+              class="inline-flex items-center gap-2 rounded-xl bg-orange-500 px-5 py-2.5 text-sm font-bold text-white hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-50"
+              :disabled="!!updatingId"
+              @click="submitParticipantPoints"
+            >
+              <Loader2 v-if="updatingId" class="animate-spin" :size="16" />
+              <Plus v-else :size="16" />
+              เพิ่มคะแนน
+            </button>
           </div>
         </div>
       </div>

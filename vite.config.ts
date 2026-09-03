@@ -3,7 +3,7 @@ import vue from "@vitejs/plugin-vue";
 import { execFileSync } from "child_process";
 import fs from "fs";
 import path from "path";
-import { defineConfig, loadEnv } from "vite";
+import { defineConfig } from "vite";
 import { visualizer } from "rollup-plugin-visualizer";
 import { fileURLToPath } from "url";
 
@@ -39,8 +39,10 @@ const resolveBuildInfo = () => {
 const buildInfo = resolveBuildInfo();
 
 export default defineConfig(({ mode }) => {
-  const env = loadEnv(mode, ".", "");
   return {
+    // Production values are injected exclusively by scripts/build-production.mjs.
+    // This prevents .env.local or .env from leaking into a production bundle.
+    envDir: mode === "production" ? false : ".",
     plugins: [
       vue(),
       tailwindcss(),
@@ -64,6 +66,18 @@ export default defineConfig(({ mode }) => {
           }
         },
       },
+      {
+        name: "exclude-runtime-uploads",
+        closeBundle() {
+          // Vite copies public/ into dist. User-generated uploads are mutable
+          // runtime data and must be preserved separately, never baked into a
+          // release archive.
+          const generatedUploads = path.resolve(__dirname, "dist", "uploads");
+          if (fs.existsSync(generatedUploads)) {
+            fs.rmSync(generatedUploads, { recursive: true, force: true });
+          }
+        },
+      },
       // ใช้ visualizer เฉพาะตอน production
       mode === "production" &&
         (visualizer({
@@ -73,7 +87,6 @@ export default defineConfig(({ mode }) => {
         }) as any),
     ].filter(Boolean),
     define: {
-      "process.env.GEMINI_API_KEY": JSON.stringify(env.GEMINI_API_KEY),
       // baked-in build id ของ bundle นี้ — เทียบกับ /version.json ตอน runtime
       __APP_VERSION__: JSON.stringify(buildInfo.buildId),
     },
@@ -102,9 +115,13 @@ export default defineConfig(({ mode }) => {
     build: {
       rollupOptions: {
         output: {
-          manualChunks: {
-            vendor: ["vue", "vue-router"],
-            utils: ["axios", "moment", "lucide-vue-next"],
+          manualChunks(id) {
+            if (!id.includes("node_modules")) return undefined;
+            if (/node_modules[\\/](vue|vue-router)[\\/]/.test(id)) return "vendor";
+            if (/node_modules[\\/](axios|moment|lucide-vue-next)[\\/]/.test(id)) {
+              return "utils";
+            }
+            return undefined;
           },
         },
       },

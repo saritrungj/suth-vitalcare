@@ -80,6 +80,9 @@ export const validateSessionWithServer = async (): Promise<boolean> => {
 };
 /** ล้าง Local State และ Redirect ไปหน้า Login */
 export const forceLogout = () => {
+  fetch(`${API_URL}/users/logout`, { method: "POST", keepalive: true }).catch(
+    () => {},
+  );
   writeStoredUser(null);
   authStore.user = null;
   authStore.loading = false;
@@ -204,18 +207,15 @@ export const backendLoginWithCaptcha = async (
   if (loginRequestInFlight) return loginRequestInFlight;
   loginRequestInFlight = (async () => {
     try {
-      const profile = await liff.getProfile();
-      const decodedToken = liff.getDecodedIDToken() as any;
+      const accessToken = liff.getAccessToken();
+      if (!accessToken) throw new Error("LINE access token is unavailable");
       const response = await fetch(`${API_URL}/users/login`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          line_id: profile.userId,
-          fname_th: profile.displayName,
-          picture_url: profile.pictureUrl,
-          email: decodedToken?.email || null,
+          accessToken,
           captchaToken: captchaToken,
           isRegister: isRegister,
           noCreate: noCreate,
@@ -245,6 +245,9 @@ export const backendLoginWithCaptcha = async (
   return loginRequestInFlight;
 };
 export const logoutLiff = () => {
+  fetch(`${API_URL}/users/logout`, { method: "POST", keepalive: true }).catch(
+    () => {},
+  );
   writeStoredUser(null);
   if (liff.isLoggedIn()) {
     try {

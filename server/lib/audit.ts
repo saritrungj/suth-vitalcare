@@ -1,5 +1,6 @@
 import { pool } from "../mysql.js";
 import { Request } from "express";
+import { getClientIp, normalizeClientIp } from "./clientIp.js";
 
 export interface AuditLogOptions {
   userId: number | string | null;
@@ -156,10 +157,8 @@ export async function logAudit(
 
   // Auto-extract from req if provided
   const finalIp = req
-    ? ((req.headers["x-forwarded-for"] ||
-        req.socket.remoteAddress ||
-        null) as string)
-    : ipAddress || null;
+    ? getClientIp(req) || null
+    : normalizeClientIp(ipAddress) || null;
   const finalUA = req ? req.headers["user-agent"] || null : userAgent || null;
 
   let finalMetadata = metadata;
